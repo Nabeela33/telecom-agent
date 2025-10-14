@@ -1,1 +1,6 @@
-
+streamlit
+pandas
+google-cloud-storage
+google-cloud-bigquery
+google-cloud-aiplatform
+openpyxl
