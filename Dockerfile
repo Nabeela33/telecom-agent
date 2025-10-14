@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8080
 
 # Run Streamlit
-CMD streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+CMD ["python3", "-m", "streamlit", "run", "app.py", "--server.port=${PORT:-8080}", "--server.address=0.0.0.0", "--server.headless=true"]
