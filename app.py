@@ -4,12 +4,12 @@ from vertex_client import VertexAgent
 from bigquery_client import BigQueryAgent
 
 # ----------------- CONFIG -----------------
-PROJECT_ID = "telecom-data-integration"
-REGION = "us-central1"
+PROJECT_ID = "telecom-data-lake"
+REGION = "europe-west2"
 VERTEX_ENDPOINT_ID = "your-vertex-endpoint-id"
-BUCKET_NAME = "your-gcs-bucket"
-SIEBEL_MAPPING_FILE = "siebel_mapping.xlsx"
-ANTILLIA_MAPPING_FILE = "antillia_mapping.xlsx"
+BUCKET_NAME = "stage_data1"
+SIEBEL_MAPPING_FILE = "Mapping files/siebel_mapping.xlsx"
+ANTILLIA_MAPPING_FILE = "Mapping files/antillia_mapping.xlsx"
 
 # ----------------- LOAD MAPPINGS -----------------
 st.sidebar.title("Configuration")
