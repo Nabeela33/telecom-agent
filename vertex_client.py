@@ -1,23 +1,35 @@
-from google.cloud import aiplatform
+# vertex_client.py
+
+import openai
 
 class VertexAgent:
-    def __init__(self, project_id, region, endpoint_id):
-        aiplatform.init(project=project_id, location=region)
-        self.endpoint = aiplatform.Endpoint(endpoint_id)
-    
-    def prompt_to_sql(self, prompt, siebel_mapping=None, antillia_mapping=None):
+    """
+    Replacement for Vertex AI agent using OpenAI GPT.
+    Converts natural language prompts to SQL.
+    """
+    def __init__(self, api_key: str, model: str = "gpt-4"):
+        self.api_key = api_key
+        self.model = model
+        openai.api_key = self.api_key
+
+    def prompt_to_sql(self, prompt: str, siebel_mapping, antillia_mapping):
         """
-        Convert natural language prompt to SQL using Vertex AI
+        Generate SQL from natural language prompt.
+        Uses mapping data as context for better accuracy.
         """
-        system_msg = "You are a telecom data analyst. Use the provided schema mapping files to generate accurate SQL for BigQuery."
-        
-        # Include mapping summaries in user message if available
-        user_msg = prompt
-        if siebel_mapping is not None:
-            user_msg += f"\n\nSiebel Mapping:\n{siebel_mapping.head(5).to_string()}"
-        if antillia_mapping is not None:
-            user_msg += f"\n\nAntillia Mapping:\n{antillia_mapping.head(5).to_string()}"
-        
-        response = self.endpoint.predict(instances=[{"content": user_msg}])
-        sql_query = response.predictions[0]["content"]
+        # Combine mappings as context
+        context = f"Siebel mappings: {siebel_mapping.head(5).to_dict()}\n"
+        context += f"Antillia mappings: {antillia_mapping.head(5).to_dict()}\n"
+        full_prompt = f"{context}\nConvert this natural language query into SQL:\n{prompt}"
+
+        response = openai.ChatCompletion.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a SQL expert. Generate accurate SQL queries."},
+                {"role": "user", "content": full_prompt}
+            ],
+            max_tokens=500,
+            temperature=0
+        )
+        sql_query = response.choices[0].message.content.strip()
         return sql_query
