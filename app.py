@@ -2,11 +2,11 @@ import streamlit as st
 from utils import load_mapping
 from vertex_client import VertexAgent
 from bigquery_client import BigQueryAgent
+import os
 
 # ----------------- CONFIG -----------------
 PROJECT_ID = "telecom-data-lake"
 REGION = "europe-west2"
-VERTEX_ENDPOINT_ID = "your-vertex-endpoint-id"
 BUCKET_NAME = "stage_data1"
 SIEBEL_MAPPING_FILE = "Mapping files/siebel_mapping.xlsx"
 ANTILLIA_MAPPING_FILE = "Mapping files/antillia_mapping.xlsx"
@@ -19,12 +19,13 @@ siebel_mapping = load_mapping(BUCKET_NAME, SIEBEL_MAPPING_FILE)
 antillia_mapping = load_mapping(BUCKET_NAME, ANTILLIA_MAPPING_FILE)
 
 # ----------------- INIT AGENTS -----------------
-vertex_agent = VertexAgent(PROJECT_ID, REGION, VERTEX_ENDPOINT_ID)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+vertex_agent = VertexAgent(api_key=OPENAI_API_KEY)
 bq_agent = BigQueryAgent(PROJECT_ID)
 
 # ----------------- STREAMLIT UI -----------------
 st.title("📊 Telecom Data Query Agent")
-st.markdown("Enter your query in natural language. Vertex AI will convert it to SQL and execute in BigQuery.")
+st.markdown("Enter your query in natural language. OpenAI GPT will convert it to SQL and execute in BigQuery.")
 
 prompt = st.text_area("Enter your query:")
 
@@ -39,7 +40,7 @@ if st.button("Run Query"):
         st.warning("Please enter a query prompt!")
     else:
         try:
-            with st.spinner("Generating SQL with Vertex AI..."):
+            with st.spinner("Generating SQL with OpenAI GPT..."):
                 sql_query = vertex_agent.prompt_to_sql(prompt, siebel_mapping, antillia_mapping)
             st.code(sql_query, language="sql")
 
