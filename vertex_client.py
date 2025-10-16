@@ -1,35 +1,36 @@
 # vertex_client.py
-
-import openai
+import vertexai
+from vertexai.preview.generative_models import GenerativeModel
 
 class VertexAgent:
     """
-    Replacement for Vertex AI agent using OpenAI GPT.
-    Converts natural language prompts to SQL.
+    Uses Gemini 2.5 model from Vertex AI to generate SQL queries.
     """
-    def __init__(self, api_key: str, model: str = "gpt-4"):
-        self.api_key = api_key
-        self.model = model
-        openai.api_key = self.api_key
+
+    def __init__(self, project_id: str, region: str, model_name: str = "gemini-2.5-flash"):
+        self.project_id = project_id
+        self.region = region
+        self.model_name = model_name
+
+        # Initialize Vertex AI environment
+        vertexai.init(project=project_id, location=region)
+        self.model = GenerativeModel(model_name)
 
     def prompt_to_sql(self, prompt: str, siebel_mapping, antillia_mapping):
         """
-        Generate SQL from natural language prompt.
-        Uses mapping data as context for better accuracy.
+        Generate SQL query from a natural language prompt using Gemini 2.5.
         """
-        # Combine mappings as context
-        context = f"Siebel mappings: {siebel_mapping.head(5).to_dict()}\n"
-        context += f"Antillia mappings: {antillia_mapping.head(5).to_dict()}\n"
-        full_prompt = f"{context}\nConvert this natural language query into SQL:\n{prompt}"
+        context = f"""
+        You are an expert telecom data analyst.
+        Convert the following natural language request into a valid BigQuery SQL query.
 
-        response = openai.ChatCompletion.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are a SQL expert. Generate accurate SQL queries."},
-                {"role": "user", "content": full_prompt}
-            ],
-            max_tokens=500,
-            temperature=0
-        )
-        sql_query = response.choices[0].message.content.strip()
-        return sql_query
+        Use these mappings as context:
+        - Siebel Mapping (sample): {siebel_mapping.head(5).to_dict()}
+        - Antillia Mapping (sample): {antillia_mapping.head(5).to_dict()}
+
+        Output ONLY the SQL query without extra commentary.
+        User request: {prompt}
+        """
+
+        response = self.model.generate_content(context)
+        return response.text.strip()
