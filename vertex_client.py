@@ -1,36 +1,25 @@
-# vertex_client.py
-import vertexai
-from vertexai.preview.generative_models import GenerativeModel
+from google.cloud import aiplatform
 
 class VertexAgent:
-    """
-    Uses Gemini 2.5 model from Vertex AI to generate SQL queries.
-    """
-
-    def __init__(self, project_id: str, region: str, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, project_id, region, model_name="gemini-2.5-flash"):
         self.project_id = project_id
         self.region = region
         self.model_name = model_name
+        aiplatform.init(project=project_id, location=region)
+        self.model = aiplatform.TextGenerationModel.from_pretrained(model_name)
 
-        # Initialize Vertex AI environment
-        vertexai.init(project=project_id, location=region)
-        self.model = GenerativeModel(model_name)
+    def prompt_to_sql(self, prompt: str, mapping_file_name: str, mapping_df, all_datasets):
+        # Detect dataset from mapping file
+        system_name = mapping_file_name.split("_")[0].lower()
+        dataset = next((ds for ds in all_datasets if system_name in ds.lower()), all_datasets[0])
 
-    def prompt_to_sql(self, prompt: str, siebel_mapping, antillia_mapping):
-        """
-        Generate SQL query from a natural language prompt using Gemini 2.5.
-        """
         context = f"""
-        You are an expert telecom data analyst.
-        Convert the following natural language request into a valid BigQuery SQL query.
-
-        Use these mappings as context:
-        - Siebel Mapping (sample): {siebel_mapping.head(5).to_dict()}
-        - Antillia Mapping (sample): {antillia_mapping.head(5).to_dict()}
-
-        Output ONLY the SQL query without extra commentary.
-        User request: {prompt}
+        You are an expert SQL generator for BigQuery.
+        Use dataset `{dataset}` for tables referenced in this mapping.
+        Mapping sample: {mapping_df.head(5).to_dict()}
+        Convert this user prompt into a valid BigQuery SQL:
+        {prompt}
         """
-
-        response = self.model.generate_content(context)
-        return response.text.strip()
+        response = self.model.predict(context)
+        sql_query = response.text.strip()
+        return sql_query
