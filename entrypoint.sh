@@ -1,6 +1,10 @@
 #!/bin/bash
-# entrypoint.sh
-# Force Streamlit to use Cloud Run's expected port
-PORT=${PORT:-8080}
-echo "Starting Streamlit on port ${PORT}..."
-exec streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0 --server.headless=true
+set -e
+
+echo "Starting Telecom Query Agent (Gemini 2.5)..."
+
+# Activate any environment setup (optional)
+# e.g. export GOOGLE_APPLICATION_CREDENTIALS="/app/key.json"
+
+# Start Streamlit
+exec streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
