@@ -2,20 +2,20 @@ from google.cloud import storage
 import pandas as pd
 import io
 
-def load_mapping(bucket_name: str, file_name: str):
+def load_mapping(bucket_name, file_name):
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(file_name)
-    
-    content = blob.download_as_bytes()
-    
+
+    content = blob.download_as_text()
+
     if file_name.endswith(".csv"):
-        return pd.read_csv(io.BytesIO(content))
+        return pd.read_csv(io.StringIO(content))
     elif file_name.endswith(".xlsx"):
-        return pd.read_excel(io.BytesIO(content))
+        return pd.read_excel(io.BytesIO(blob.download_as_bytes()))
     elif file_name.endswith(".txt"):
-        # Simple text file to DataFrame with one column
-        lines = content.decode("utf-8").splitlines()
-        return pd.DataFrame(lines, columns=["column"])
+        # Each line as a row
+        lines = content.splitlines()
+        return pd.DataFrame({"column": lines})
     else:
         raise ValueError("Unsupported mapping file format")
