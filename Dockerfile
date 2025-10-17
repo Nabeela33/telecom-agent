@@ -1,10 +1,10 @@
-# Use Python 3.11 slim for compatibility with google-cloud-aiplatform >= 2.23
+# Use Python 3.11 slim
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements file
+# Copy requirements
 COPY requirements.txt .
 
 # Upgrade pip and install dependencies
@@ -14,11 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all project files
 COPY . .
 
-# Expose the port that Streamlit will run on
+# Expose port 8080
 EXPOSE 8080
 
-# Cloud Run supplies PORT environment variable
+# Set PORT environment variable (Cloud Run uses this)
 ENV PORT=8080
 
-# Start Streamlit
+# Run Streamlit
 ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=$PORT", "--server.address=0.0.0.0", "--server.headless=true"]
