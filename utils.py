@@ -1,25 +1,22 @@
 import pandas as pd
 from google.cloud import storage
-from io import BytesIO, StringIO
+import io
 
-def load_mapping(bucket_name, file_name):
-    """
-    Load mapping file from GCS (.csv, .txt, or .xlsx)
-    Returns pandas DataFrame
-    """
+def load_mapping(bucket_name, mapping_file):
+    """Load mapping file (csv, xlsx, or txt) from GCS."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
-    blob = bucket.blob(file_name)
-    content = blob.download_as_bytes()
+    blob = bucket.blob(mapping_file)
+    data = blob.download_as_bytes()
 
-    if file_name.endswith(".xlsx"):
-        df = pd.read_excel(BytesIO(content))
-    elif file_name.endswith(".csv") or file_name.endswith(".txt"):
-        try:
-            df = pd.read_csv(StringIO(content.decode("utf-8")), sep="\t")
-        except Exception:
-            df = pd.read_csv(StringIO(content.decode("utf-8")), sep=",")
+    if mapping_file.endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(data))
+    elif mapping_file.endswith(".xlsx"):
+        df = pd.read_excel(io.BytesIO(data))
+    elif mapping_file.endswith(".txt"):
+        df = pd.read_csv(io.BytesIO(data), sep="|", engine="python", header=None)
+        df.columns = [f"col_{i}" for i in range(len(df.columns))]
     else:
-        raise ValueError(f"Unsupported mapping file format: {file_name}")
-    
+        raise ValueError("Unsupported mapping file format")
+
     return df
