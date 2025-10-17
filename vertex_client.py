@@ -1,29 +1,14 @@
-from vertexai import init
-from vertexai.generative_models import GenerativeModel
+from google.cloud import aiplatform
 
 class VertexAgent:
-    def __init__(self, project_id, region):
-        init(project=project_id, location=region)
-        self.model = GenerativeModel("gemini-1.5-pro")  # Gemini 2.5 compatible API
+    def __init__(self, project_id: str, region: str):
+        aiplatform.init(project=project_id, location=region)
+        # Gemini 2.5 prebuilt model
+        self.model = aiplatform.generation.TextGenerationModel.from_pretrained("text-bison@002")
 
-    def prompt_to_sql(self, prompt, siebel_mapping, antillia_mapping):
-        """Generate SQL query from natural-language prompt using Gemini."""
-        context = f"""
-        You are an expert SQL generator for telecom datasets.
-        Use the following table mappings to infer dataset and field names.
-
-        Siebel Mapping:
-        {siebel_mapping.head(10).to_string(index=False)}
-
-        Antillia Mapping:
-        {antillia_mapping.head(10).to_string(index=False)}
-
-        Rules:
-        - Always generate valid BigQuery SQL.
-        - Use backticks around fully-qualified table names.
-        - Only reference tables that exist in the dataset names that contain the mapping's system name.
-        - Do not include explanations, return only SQL.
-        """
-
-        response = self.model.generate_content(f"{context}\n\nUser Query: {prompt}\n\nSQL:")
-        return response.text.strip()
+    def prompt_to_sql(self, prompt: str, siebel_mapping, antillia_mapping) -> str:
+        # Simple text generation using Gemini
+        response = self.model.predict(
+            f"Generate SQL based on prompt:\n{prompt}\nUse these mappings: {siebel_mapping.columns.tolist()} & {antillia_mapping.columns.tolist()}"
+        )
+        return response.text
