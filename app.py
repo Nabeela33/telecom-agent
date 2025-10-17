@@ -8,8 +8,8 @@ PROJECT_ID = "telecom-data-lake"
 REGION = "europe-west2"
 BUCKET_NAME = "stage_data1"
 
-SIEBEL_MAPPING_FILE = "siebel_mapping.txt"
-ANTILLIA_MAPPING_FILE = "antillia_mapping.txt"
+SIEBEL_MAPPING_FILE = "Mapping files/siebel_mapping.txt"
+ANTILLIA_MAPPING_FILE = "Mapping files/antillia_mapping.txt"
 
 # ----------------- LOAD MAPPINGS -----------------
 st.sidebar.title("Configuration")
