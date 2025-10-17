@@ -2,7 +2,7 @@ streamlit
 pandas
 google-cloud-storage
 google-cloud-bigquery
-google-cloud-aiplatform
+google-cloud-aiplatform>=2.23.0
 openpyxl
 openai
 vertexai
