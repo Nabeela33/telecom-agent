@@ -44,23 +44,44 @@ if st.button("Run Query"):
                 df = bq_agent.execute(sql_query)
 
             st.success(f"✅ Query executed successfully! {len(df)} rows returned.")
-            
+
             # Collapsible dataframe
             with st.expander("View Query Results"):
                 st.dataframe(df)
 
-            # Interactive chart
-            numeric_cols = df.select_dtypes(include="number").columns.tolist()
-            if numeric_cols:
-                st.subheader("📈 Charts")
-                col_to_plot = st.selectbox("Select column to visualize:", numeric_cols)
+            # ---------------- Visualization Popup ----------------
+            if not df.empty:
+                viz_request = st.button("Visualize Results")
+                if viz_request:
+                    with st.form("visualization_form"):
+                        st.markdown("### Select visualization options")
+                        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+                        if not numeric_cols:
+                            st.info("No numeric columns available for visualization.")
+                        else:
+                            col_to_plot = st.selectbox("Select column to visualize:", numeric_cols)
+                            chart_type = st.selectbox("Select chart type:", ["Bar", "Line", "Scatter"])
+                            submit_viz = st.form_submit_button("Generate Chart")
 
-                chart = alt.Chart(df).mark_bar().encode(
-                    x=alt.X(df.index, title="Row"),
-                    y=alt.Y(col_to_plot, title=col_to_plot)
-                ).interactive()
+                            if submit_viz:
+                                chart = None
+                                if chart_type == "Bar":
+                                    chart = alt.Chart(df).mark_bar().encode(
+                                        x=alt.X(df.index, title="Row"),
+                                        y=alt.Y(col_to_plot, title=col_to_plot)
+                                    )
+                                elif chart_type == "Line":
+                                    chart = alt.Chart(df).mark_line(point=True).encode(
+                                        x=alt.X(df.index, title="Row"),
+                                        y=alt.Y(col_to_plot, title=col_to_plot)
+                                    )
+                                elif chart_type == "Scatter":
+                                    chart = alt.Chart(df).mark_circle(size=60).encode(
+                                        x=alt.X(df.index, title="Row"),
+                                        y=alt.Y(col_to_plot, title=col_to_plot)
+                                    )
 
-                st.altair_chart(chart, use_container_width=True)
+                                st.altair_chart(chart.interactive(), use_container_width=True)
 
         except Exception as e:
             st.error(f"❌ Error: {e}")
