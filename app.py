@@ -22,8 +22,8 @@ vertex_agent = VertexAgent(PROJECT_ID, REGION)
 bq_agent = BigQueryAgent(PROJECT_ID)
 
 # ---------------- STREAMLIT UI ----------------
-st.title("📊 Telecom Data Query Agent (Gemini 2.5 Flash)")
-st.markdown("Enter a natural language query, and Gemini will generate and run SQL in BigQuery.")
+st.title("📊 Telecom Data Query Agent")
+st.markdown("Hello!!! Please enter your query, and Gemini will generate and run SQL in BigQuery and give you the result")
 
 prompt = st.text_area("Enter your query:")
 
@@ -32,7 +32,7 @@ if st.button("Run Query"):
         st.warning("Please enter a query prompt!")
     else:
         try:
-            with st.spinner("🧠 Generating SQL with Gemini 2.5 Flash..."):
+            with st.spinner("🧠 Generating SQL with Gemini 1.5 Flash..."):
                 sql_query = vertex_agent.prompt_to_sql(prompt, siebel_mapping, antillia_mapping)
             st.code(sql_query, language="sql")
 
