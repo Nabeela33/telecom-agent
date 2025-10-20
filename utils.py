@@ -1,21 +1,14 @@
 from google.cloud import storage
-import pandas as pd
-import io
 
-def load_mapping(bucket_name, file_name):
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(file_name)
-
-    content = blob.download_as_text()
-
-    if file_name.endswith(".csv"):
-        return pd.read_csv(io.StringIO(content))
-    elif file_name.endswith(".xlsx"):
-        return pd.read_excel(io.BytesIO(blob.download_as_bytes()))
-    elif file_name.endswith(".txt"):
-        # Each line as a row
-        lines = content.splitlines()
-        return pd.DataFrame({"column": lines})
+def load_mapping(bucket_name: str, file_name: str) -> str:
+    """Loads text mapping file from GCS."""
+    if "/" in bucket_name:
+        bucket_name, prefix = bucket_name.split("/", 1)
+        blob_name = f"{prefix}/{file_name}"
     else:
-        raise ValueError("Unsupported mapping file format")
+        blob_name = file_name
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    return blob.download_as_text()
