@@ -51,11 +51,11 @@ if st.session_state.get('confirmed', False):
     if 'account_id' in accounts.columns:
         accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
     if 'account_id' in assets.columns:
-        assets = assets.rename(columns={"account_id": "siebel_account_id", "status": "asset_status"})
+        assets = assets.rename(columns={"account_id": "siebel_asset_account_id", "status": "asset_status"})
     if 'account_id' in orders.columns:
-        orders = orders.rename(columns={"account_id": "siebel_account_id"})
+        orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
     if 'account_id' in billing_accounts.columns:
-        billing_accounts = billing_accounts.rename(columns={"account_id": "siebel_account_id", "status": "billing_account_status"})
+        billing_accounts = billing_accounts.rename(columns={"account_id": "billing_account_id", "status": "billing_account_status"})
 
     # ---------------- MERGE LOGIC ----------------
     merged = billing_products.merge(
@@ -69,8 +69,8 @@ if st.session_state.get('confirmed', False):
     )
 
     # ---------------- COMPLETENESS KPIS ----------------
-    merged['service_no_bill'] = (merged["asset_status"] == "Operational") & (merged.get("billing_account_status", "") != "Active")
-    merged['no_service_bill'] = (merged["asset_status"] != "Operational") & (merged.get("billing_account_status", "") == "Active")
+    merged['service_no_bill'] = (merged["asset_status"] == "Active") & (merged.get("billing_account_status", "") != "Active")
+    merged['no_service_bill'] = (merged["asset_status"] != "Active") & (merged.get("billing_account_status", "") == "Active")
 
     result_df = merged[[
         "siebel_account_id", "asset_id", "product_name", "asset_status", "billing_account_status",
