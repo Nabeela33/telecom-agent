@@ -25,7 +25,7 @@ control_type = st.sidebar.selectbox("Select Control Type", ["Completeness"])
 #product_filter = st.sidebar.text_input("Enter Product Name")
 # Fetch distinct product names from billing_products
 billing_products_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
-product_name = st.sidebar.selectbox(
+product_filter = st.sidebar.selectbox(
     "Select Product:",
     billing_products_df['product_name'].tolist()
 )
