@@ -15,14 +15,20 @@ bq_agent = BigQueryAgent(PROJECT_ID)
 st.title("📊 Telecom Completeness Control")
 st.markdown(
     "Select a control type and product to generate the completeness report. "
-    "KPIs:\n- **Service but no Bill**: Active asset but inactive billing.\n"
-    "- **No Service but Bill**: Inactive asset but active billing."
+    "KPIs:\n- **Service no Bill**: Active asset but inactive billing.\n"
+    "- **Bill No Service**: Inactive asset but active billing."
 )
 
 # Sidebar filters
 st.sidebar.title("Filters")
 control_type = st.sidebar.selectbox("Select Control Type", ["Completeness"])
-product_filter = st.sidebar.text_input("Enter Product Name")
+#product_filter = st.sidebar.text_input("Enter Product Name")
+# Fetch distinct product names from billing_products
+billing_products_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
+product_name = st.sidebar.selectbox(
+    "Select Product:",
+    billing_products_df['product_name'].tolist()
+)
 
 if st.sidebar.button("Generate Report"):
     confirm = st.checkbox(f"Confirm to run '{control_type}' control for product: '{product_filter}'")
