@@ -12,7 +12,7 @@ BUCKET_NAME = "stage_data1/Mapping files"
 
 # ---------------- LOAD MAPPINGS ----------------
 st.sidebar.title("Configuration")
-st.sidebar.info("Mappings from different systems guide the SQL generation.")
+st.sidebar.info("Mappings guide SQL generation for Gemini queries.")
 
 st.write("Loading mapping files from GCS...")
 siebel_mapping = load_mapping(BUCKET_NAME, "siebel_mapping.txt")
@@ -24,8 +24,14 @@ bq_agent = BigQueryAgent(PROJECT_ID)
 
 # ---------------- STREAMLIT UI ----------------
 st.title("📊 Telecom Data Query Agent")
-st.markdown("Enter your query, and Gemini will generate SQL to fetch data from BigQuery.")
+st.markdown(
+    "You can either:\n"
+    "1️⃣ Enter a natural language query and let Gemini generate SQL.\n"
+    "2️⃣ Explore tables interactively using filters below."
+)
 
+# ---------------- AI-GENERATED QUERY ----------------
+st.subheader("🤖 Gemini SQL Query")
 prompt = st.text_area("Enter your query:")
 
 if st.button("Run Query"):
@@ -44,60 +50,50 @@ if st.button("Run Query"):
                 df = bq_agent.execute(sql_query)
 
             st.success(f"✅ Query executed successfully! {len(df)} rows returned.")
-
-            # ---------------- Summary Stats ----------------
-            st.subheader("Summary Stats")
-            st.metric("Total Rows", len(df))
-            numeric_cols = df.select_dtypes(include="number").columns.tolist()
-            for col in numeric_cols:
-                st.metric(f"{col} Avg", round(df[col].mean(), 2))
-                st.metric(f"{col} Max", round(df[col].max(), 2))
-                st.metric(f"{col} Min", round(df[col].min(), 2))
-
-            # ---------------- Filtering ----------------
-            st.subheader("Filter Data")
-            filtered_df = df.copy()
-            for col in df.select_dtypes(include="object").columns:
-                unique_vals = df[col].unique()
-                selected = st.multiselect(f"Filter {col}", options=unique_vals, default=unique_vals)
-                filtered_df = filtered_df[filtered_df[col].isin(selected)]
-
-            # Collapsible dataframe
-            with st.expander("View Filtered Data"):
-                st.dataframe(filtered_df)
-
-            # ---------------- Pivot Table ----------------
-            if st.checkbox("Create Pivot Table"):
-                st.subheader("Pivot Table")
-                pivot_index = st.selectbox("Pivot Index", filtered_df.columns, key="pivot_index")
-                pivot_values = st.selectbox("Pivot Values (numeric)", numeric_cols, key="pivot_values")
-                agg_func = st.selectbox("Aggregation Function", ["sum", "mean", "max", "min"], key="pivot_agg")
-                pivot_table = filtered_df.pivot_table(index=pivot_index, values=pivot_values, aggfunc=agg_func)
-                st.dataframe(pivot_table)
-
-            # ---------------- Interactive Charts ----------------
-            if numeric_cols:
-                st.subheader("Visualize Data")
-                col_to_plot = st.selectbox("Select numeric column to visualize", numeric_cols, key="chart_col")
-                chart_type = st.selectbox("Select chart type", ["Bar Chart", "Line Chart", "Area Chart"], key="chart_type")
-
-                chart = alt.Chart(filtered_df.reset_index()).encode(
-                    x=alt.X('index:O', title='Row'),
-                    y=alt.Y(col_to_plot, title=col_to_plot)
-                )
-
-                if chart_type == "Bar Chart":
-                    chart = chart.mark_bar()
-                elif chart_type == "Line Chart":
-                    chart = chart.mark_line()
-                elif chart_type == "Area Chart":
-                    chart = chart.mark_area()
-
-                st.altair_chart(chart.interactive(), use_container_width=True)
-
-            # ---------------- Download CSV ----------------
-            csv = filtered_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Filtered Data as CSV", data=csv, file_name="query_result.csv", mime="text/csv")
+            with st.expander("View Query Results"):
+                st.dataframe(df)
 
         except Exception as e:
             st.error(f"❌ Error: {e}")
+
+# ---------------- INTERACTIVE EXPLORATION ----------------
+st.subheader("🔍 Explore Tables Interactively")
+
+# Step 1: Table selection
+tables = bq_agent.list_tables()
+selected_table = st.selectbox("Select Table", tables)
+
+if selected_table:
+    # Step 2: Column selection
+    columns = bq_agent.list_columns(selected_table)
+    selected_column = st.selectbox("Select Column", columns)
+    
+    if selected_column:
+        # Step 3: Sample values filter
+        sample_values = bq_agent.get_sample_values(selected_table, selected_column)
+        selected_values = st.multiselect("Filter values (optional)", sample_values)
+
+        # Step 4: Fetch filtered data
+        if selected_values:
+            value_list = ", ".join([repr(v) for v in selected_values])
+            filter_query = f"SELECT * FROM `{PROJECT_ID}.{selected_table}` WHERE {selected_column} IN ({value_list}) LIMIT 100"
+        else:
+            filter_query = f"SELECT * FROM `{PROJECT_ID}.{selected_table}` LIMIT 100"
+
+        with st.spinner("Fetching data..."):
+            df_filtered = bq_agent.execute(filter_query)
+
+        with st.expander("View Filtered Data"):
+            st.dataframe(df_filtered)
+
+        # Step 5: Optional chart
+        if not df_filtered.empty:
+            numeric_cols = df_filtered.select_dtypes(include="number").columns.tolist()
+            if numeric_cols:
+                st.subheader("📈 Visualize Numeric Column")
+                col_to_plot = st.selectbox("Select numeric column to chart", numeric_cols)
+                chart = alt.Chart(df_filtered).mark_bar().encode(
+                    x=alt.X(df_filtered.index, title="Row"),
+                    y=alt.Y(col_to_plot, title=col_to_plot)
+                ).interactive()
+                st.altair_chart(chart, use_container_width=True)
