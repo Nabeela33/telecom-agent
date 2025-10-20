@@ -1,105 +1,115 @@
 import streamlit as st
-import pandas as pd
 from utils import load_mapping
 from bigquery_client import BigQueryAgent
+import pandas as pd
 
 # ---------------- CONFIG ----------------
 PROJECT_ID = "telecom-data-lake"
 REGION = "europe-west2"
 BUCKET_NAME = "stage_data1/Mapping files"
 
-# ---------------- INIT AGENTS ----------------
+# ---------------- LOAD MAPPINGS ----------------
+st.sidebar.title("Configuration")
+st.sidebar.info("Mappings guide table/column usage dynamically.")
+
+siebel_mapping = load_mapping(BUCKET_NAME, "siebel_mapping.txt")
+antillia_mapping = load_mapping(BUCKET_NAME, "antillia_mapping.txt")
+
+# ---------------- INIT AGENT ----------------
 bq_agent = BigQueryAgent(PROJECT_ID)
 
 # ---------------- STREAMLIT UI ----------------
-st.title("📊 Telecom Completeness Control")
+st.title("📊 Telecom Product Completeness Control")
 st.markdown(
-    "Select a control type and product to generate the completeness report. "
-    "KPIs:\n- **Service no Bill**: Active asset but inactive billing.\n"
-    "- **Bill No Service**: Inactive asset but active billing."
+    "Select a control type and product, confirm, and generate the completeness report."
 )
 
-# Sidebar filters
-st.sidebar.title("Filters")
-control_type = st.sidebar.selectbox("Select Control Type", ["Completeness"])
-#product_filter = st.sidebar.text_input("Enter Product Name")
-# Fetch distinct product names from billing_products
-billing_products_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
-product_filter = st.sidebar.selectbox(
-    "Select Product:",
-    billing_products_df['product_name'].tolist()
-)
+# ---------------- SIDEBAR SELECTIONS ----------------
+control_types = ["Completeness"]  # Can extend in future
+control_type = st.sidebar.selectbox("Select Control Type", control_types)
 
-if st.sidebar.button("Generate Report"):
-    confirm = st.checkbox(f"Confirm to run '{control_type}' control for product: '{product_filter}'")
-    
-    if confirm:
-        with st.spinner("Fetching data from BigQuery..."):
-            # Load Siebel tables
-            siebel_accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_accounts`")
-            siebel_assets = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_assets`")
-            siebel_orders = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_orders`")
+# Extract distinct product names from Antillia mapping
+product_column = antillia_mapping["columns"]["billing_products"]
+product_name_col = "product_name" if "product_name" in product_column else product_column[0]
 
-            # Load Antillia tables
-            billing_accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.gibantillia.billing_accounts`")
-            billing_products = bq_agent.execute("SELECT * FROM `telecom-data-lake.gibantillia.billing_products`")
+# Query to fetch distinct products dynamically
+distinct_products_query = f"""
+SELECT DISTINCT {product_name_col} as product_name
+FROM `{PROJECT_ID}.gibantillia.billing_products`
+ORDER BY product_name
+"""
+products_df = bq_agent.execute(distinct_products_query)
+products = products_df["product_name"].tolist()
+selected_product = st.sidebar.selectbox("Select Product", products)
 
-        # ---------------- RENAME COLUMNS TO AVOID CONFLICTS ----------------
-        siebel_accounts = siebel_accounts.rename(columns={"account_id": "siebel_account_id"})
-        siebel_assets = siebel_assets.rename(columns={
-            "account_id": "siebel_account_id",
-            "asset_id": "siebel_asset_id"
-        })
-        siebel_orders = siebel_orders.rename(columns={
-            "account_id": "siebel_account_id",
-            "asset_id": "siebel_asset_id",
-            "order_id": "siebel_order_id"
-        })
-        billing_accounts = billing_accounts.rename(columns={"account_id": "antillia_account_id"})
-        billing_products = billing_products.rename(columns={
-            "account_id": "antillia_account_id",
-            "asset_id": "antillia_asset_id",
-            "order_id": "antillia_order_id"
-        })
+# ---------------- CONFIRMATION ----------------
+confirm = st.button("✅ Confirm Selection")
 
-        # ---------------- FILTER PRODUCT ----------------
-        if product_filter:
-            billing_products = billing_products[billing_products["product_name"].str.contains(product_filter, case=False)]
+if confirm:
+    st.info(f"Running completeness report for product: **{selected_product}**")
+    try:
+        # ---------------- BUILD JOIN QUERY ----------------
+        query = f"""
+        SELECT 
+            acc.account_id AS siebel_account_id,
+            acc.account_name,
+            acc.status AS siebel_account_status,
+            a.asset_id,
+            a.asset_type,
+            a.status AS asset_status,
+            o.order_id,
+            bp.billing_account_id,
+            bp.billing_product_id,
+            bp.status AS billing_status,
+            bp.product_name
+        FROM `{PROJECT_ID}.gibantillia.billing_products` bp
+        INNER JOIN `{PROJECT_ID}.gibantillia.billing_accounts` bacc
+            ON bp.billing_account_id = bacc.billing_account_id
+        INNER JOIN `{PROJECT_ID}.o_siebel.siebel_accounts` acc
+            ON bacc.account_id = acc.account_id
+        INNER JOIN `{PROJECT_ID}.o_siebel.siebel_assets` a
+            ON bp.asset_id = a.asset_id
+        INNER JOIN `{PROJECT_ID}.o_siebel.siebel_orders` o
+            ON bp.order_id = o.order_id
+        WHERE bp.product_name = '{selected_product}'
+        """
 
-        # ---------------- JOIN TABLES ----------------
-        df = (
-            billing_products
-            .merge(billing_accounts, on="billing_account_id", how="left")
-            .merge(siebel_accounts, left_on="antillia_account_id", right_on="siebel_account_id", how="left")
-            .merge(siebel_assets, left_on="antillia_asset_id", right_on="siebel_asset_id", how="left")
-        )
+        # ---------------- EXECUTE QUERY ----------------
+        df = bq_agent.execute(query)
 
-        # ---------------- CALCULATE KPIs ----------------
-        df["service_no_bill"] = (
-            (df["asset_status"] == "Active") &
-            (df["status_y"] != "Active")  # billing status
-        )
+        if df.empty:
+            st.warning("No data found for the selected product.")
+        else:
+            # ---------------- KPI CALCULATION ----------------
+            # Service Active but Billing Not Active → Service No Bill
+            df["service_no_bill"] = (
+                (df["asset_status"] == "Operational") & (df["billing_status"] != "Active")
+            )
 
-        df["bill_no_service"] = (
-            (df["asset_status"] != "Active") &
-            (df["status_y"] == "Active")  # billing status
-        )
+            # Asset Not Active but Billing Active → No Service Bill
+            df["no_service_bill"] = (
+                (df["asset_status"] != "Operational") & (df["billing_status"] == "Active")
+            )
 
-        # ---------------- DISPLAY RESULTS ----------------
-        st.success(f"✅ Report generated! {len(df)} rows.")
-        st.subheader("Completeness Results")
-        with st.expander("View Full Dataset"):
-            st.dataframe(df)
+            st.subheader("📋 Completeness Report")
+            with st.expander("View Detailed Data"):
+                st.dataframe(df)
 
-        st.subheader("KPIs Summary")
-        st.markdown(f"- Service no bill: {df['service_no_bill'].sum()}")
-        st.markdown(f"- Bill no service: {df['bill_no_service'].sum()}")
+            st.markdown(
+                f"**KPI Summary:**<br>"
+                f"- Service No Bill: {df['service_no_bill'].sum()}<br>"
+                f"- No Service Bill: {df['no_service_bill'].sum()}",
+                unsafe_allow_html=True
+            )
 
-        # ---------------- DOWNLOAD OPTION ----------------
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv,
-            file_name=f"{control_type}_report.csv",
-            mime="text/csv"
-        )
+            # ---------------- DOWNLOAD OPTION ----------------
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Download CSV",
+                data=csv,
+                file_name=f"completeness_{selected_product}.csv",
+                mime="text/csv",
+            )
+
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
