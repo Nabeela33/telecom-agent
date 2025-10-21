@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st 
 from utils import load_mapping
 from vertex_client import VertexAgent
 from bigquery_client import BigQueryAgent
@@ -98,6 +98,19 @@ if st.session_state.get('confirmed', False):
         (merged.get("billing_account_status", "") == "Active")
     )
 
+    # ---------------- KPI CLASSIFICATION ----------------
+    def classify_kpi(row):
+        if row["asset_status"] == "Active" and row["billing_account_status"] == "Active":
+            return "Happy Path"
+        elif row["service_no_bill"]:
+            return "Service No Bill"
+        elif row["no_service_bill"]:
+            return "Bill No Service"
+        else:
+            return "Other"
+
+    merged["KPI"] = merged.apply(classify_kpi, axis=1)
+
     # ---------------- RESULTS ----------------
     result_df = merged[[
         "siebel_account_id",
@@ -105,6 +118,7 @@ if st.session_state.get('confirmed', False):
         "product_name",
         "asset_status",
         "billing_account_status",
+        "KPI",
         "service_no_bill",
         "no_service_bill"
     ]].drop_duplicates()
@@ -114,11 +128,13 @@ if st.session_state.get('confirmed', False):
     total = len(result_df)
     service_no_bill = result_df["service_no_bill"].sum()
     no_service_bill = result_df["no_service_bill"].sum()
+    happy_path = (result_df["KPI"] == "Happy Path").sum()
 
     st.metric("Total Records", total)
+    st.metric("Happy Path", happy_path)
     st.metric("Service No Bill", service_no_bill)
     st.metric("No Service Bill", no_service_bill)
-    st.metric("Overall Completeness (%)", round(((total - (service_no_bill + no_service_bill)) / total) * 100, 2))
+    st.metric("Overall Completeness (%)", round(((happy_path / total) * 100), 2))
 
     # ---------------- DETAILED TABLE ----------------
     st.subheader("📋 Completeness Report Details")
