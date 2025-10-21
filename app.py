@@ -1,9 +1,3 @@
-
----
-
-## ⚙️ Updated `app.py` (Service-Number-Level Completeness)
-
-```python
 import streamlit as st
 from utils import load_mapping
 from vertex_client import VertexAgent
