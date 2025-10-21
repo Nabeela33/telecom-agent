@@ -26,6 +26,7 @@ st.markdown("Select a product and control type to generate the report")
 
 # ---------------- SIDEBAR ----------------
 control_type = st.sidebar.selectbox("Select Control Type", ["Completeness"])
+
 # Dynamically fetch product list
 product_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
 product_list = product_df['product_name'].tolist()
@@ -48,6 +49,7 @@ if st.session_state.get('confirmed', False):
     """)
 
     # ---------------- SAFE RENAMING ----------------
+    # Give each dataset unique identifiers to avoid duplicate column names
     if 'account_id' in accounts.columns:
         accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
     if 'account_id' in assets.columns:
@@ -55,26 +57,44 @@ if st.session_state.get('confirmed', False):
     if 'account_id' in orders.columns:
         orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
     if 'account_id' in billing_accounts.columns:
-        billing_accounts = billing_accounts.rename(columns={"account_id": "billing_account_id", "status": "billing_account_status"})
+        billing_accounts = billing_accounts.rename(columns={
+            "account_id": "billing_account_siebel_account_id",
+            "billing_account_id": "billing_account_id_bacc",
+            "status": "billing_account_status"
+        })
+    if 'billing_account_id' in billing_products.columns:
+        billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
 
     # ---------------- MERGE LOGIC ----------------
     merged = billing_products.merge(
-        billing_accounts, on="billing_account_id", how="left", suffixes=("", "_billing")
+        billing_accounts, left_on="billing_account_id_bp", right_on="billing_account_id_bacc", how="left"
     ).merge(
-        accounts, on="siebel_account_id", how="left"
+        accounts, left_on="billing_account_siebel_account_id", right_on="siebel_account_id", how="left"
     ).merge(
         assets, on="asset_id", how="left"
     ).merge(
-        orders, on=["asset_id", "siebel_account_id"], how="left", suffixes=("", "_order")
+        orders, left_on=["asset_id", "siebel_account_id"], right_on=["asset_id", "siebel_order_account_id"], how="left", suffixes=("", "_order")
     )
 
     # ---------------- COMPLETENESS KPIS ----------------
-    merged['service_no_bill'] = (merged["asset_status"] == "Active") & (merged.get("billing_account_status", "") != "Active")
-    merged['no_service_bill'] = (merged["asset_status"] != "Active") & (merged.get("billing_account_status", "") == "Active")
+    merged['service_no_bill'] = (
+        (merged["asset_status"] == "Active") &
+        (merged.get("billing_account_status", "") != "Active")
+    )
+
+    merged['no_service_bill'] = (
+        (merged["asset_status"] != "Active") &
+        (merged.get("billing_account_status", "") == "Active")
+    )
 
     result_df = merged[[
-        "siebel_account_id", "asset_id", "product_name", "asset_status", "billing_account_status",
-        "service_no_bill", "no_service_bill"
+        "siebel_account_id",
+        "asset_id",
+        "product_name",
+        "asset_status",
+        "billing_account_status",
+        "service_no_bill",
+        "no_service_bill"
     ]]
 
     st.subheader("📊 Completeness Report")
