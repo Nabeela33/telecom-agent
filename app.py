@@ -107,7 +107,7 @@ if st.session_state.get('confirmed', False):
         elif row["no_service_bill"]:
             return "Bill No Service"
         else:
-            return "❔ Other"
+            return "DI Issue"
 
     merged["KPI"] = merged.apply(classify_kpi, axis=1)
 
