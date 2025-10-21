@@ -21,7 +21,7 @@ vertex_agent = VertexAgent(PROJECT_ID, REGION)
 bq_agent = BigQueryAgent(PROJECT_ID)
 
 # ---------------- STREAMLIT UI ----------------
-st.title("📊 Data Quality Controls")
+st.title("🛡️ Data Quality Controls")
 st.markdown("Select a product and control type to generate the completeness report")
 
 # ---------------- SIDEBAR ----------------
@@ -101,11 +101,11 @@ if st.session_state.get('confirmed', False):
     # ---------------- KPI CLASSIFICATION ----------------
     def classify_kpi(row):
         if row["asset_status"] == "Active" and row["billing_account_status"] == "Active":
-            return "✅ Happy Path"
+            return "Happy Path"
         elif row["service_no_bill"]:
-            return "⚠️ Service No Bill"
+            return "Service No Bill"
         elif row["no_service_bill"]:
-            return "🚨 Bill No Service"
+            return "Bill No Service"
         else:
             return "❔ Other"
 
@@ -124,12 +124,12 @@ if st.session_state.get('confirmed', False):
     ]].drop_duplicates()
 
     # ---------------- KPI SUMMARY ----------------
-    st.subheader("📊 Completeness Summary")
+    st.subheader("🧩 Completeness Summary")
 
     total = len(result_df)
-    happy_path = (result_df["KPI"] == "✅ Happy Path").sum()
-    service_no_bill = (result_df["KPI"] == "⚠️ Service No Bill").sum()
-    no_service_bill = (result_df["KPI"] == "🚨 Bill No Service").sum()
+    happy_path = (result_df["KPI"] == "Happy Path").sum()
+    service_no_bill = (result_df["KPI"] == "Service No Bill").sum()
+    no_service_bill = (result_df["KPI"] == "Bill No Service").sum()
 
     completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
 
@@ -138,16 +138,16 @@ if st.session_state.get('confirmed', False):
     with c1:
         st.metric("🧾 Total Records", f"{total:,}")
     with c2:
-        st.metric("📈 Overall Completeness (%)", f"{completeness_pct} %")
+        st.metric("📈 Happy Path (%)", f"{completeness_pct} %")
 
     # --- ROW 2: KPI Breakdown ---
     c3, c4, c5 = st.columns(3)
     with c3:
-        st.metric("✅ Happy Path", f"{happy_path:,}")
+        st.metric("Happy Path", f"{happy_path:,}")
     with c4:
-        st.metric("⚠️ Service No Bill", f"{service_no_bill:,}")
+        st.metric("Service No Bill", f"{service_no_bill:,}")
     with c5:
-        st.metric("🚨 Bill No Service", f"{no_service_bill:,}")
+        st.metric("Bill No Service", f"{no_service_bill:,}")
 
     # ---------------- DETAILED TABLE ----------------
     st.subheader("📋 Completeness Report Details")
