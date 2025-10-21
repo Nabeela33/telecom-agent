@@ -22,7 +22,7 @@ bq_agent = BigQueryAgent(PROJECT_ID)
 
 # ---------------- STREAMLIT UI ----------------
 st.title("📊 Data Quality Controls")
-st.markdown("Select a product and control type to generate the report")
+st.markdown("Select a product and control type to generate the completeness report")
 
 # ---------------- SIDEBAR ----------------
 control_type = st.sidebar.selectbox("Select Control Type", ["Completeness"])
@@ -49,7 +49,6 @@ if st.session_state.get('confirmed', False):
     """)
 
     # ---------------- SAFE RENAMING ----------------
-    # Give each dataset unique identifiers to avoid duplicate column names
     if 'account_id' in accounts.columns:
         accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
     if 'account_id' in assets.columns:
@@ -66,27 +65,40 @@ if st.session_state.get('confirmed', False):
         billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
 
     # ---------------- MERGE LOGIC ----------------
-    merged = billing_products.merge(
-        billing_accounts, left_on="billing_account_id_bp", right_on="billing_account_id_bacc", how="left"
-    ).merge(
-        accounts, left_on="billing_account_siebel_account_id", right_on="siebel_account_id", how="left"
-    ).merge(
-        assets, on="asset_id", how="left"
-    ).merge(
-        orders, left_on=["asset_id", "siebel_account_id"], right_on=["asset_id", "siebel_order_account_id"], how="left", suffixes=("", "_order")
+    merged = (
+        billing_products.merge(
+            billing_accounts, left_on="billing_account_id_bp", right_on="billing_account_id_bacc", how="left"
+        )
+        .merge(
+            accounts, left_on="billing_account_siebel_account_id", right_on="siebel_account_id", how="left"
+        )
+        .merge(
+            assets, on="asset_id", how="left"
+        )
+        .merge(
+            orders,
+            left_on=["asset_id", "siebel_account_id"],
+            right_on=["asset_id", "siebel_order_account_id"],
+            how="left",
+            suffixes=("", "_order")
+        )
     )
 
+    # ✅ Drop duplicate columns safely
+    merged = merged.loc[:, ~merged.columns.duplicated()]
+
     # ---------------- COMPLETENESS KPIS ----------------
-    merged['service_no_bill'] = (
+    merged["service_no_bill"] = (
         (merged["asset_status"] == "Active") &
         (merged.get("billing_account_status", "") != "Active")
     )
 
-    merged['no_service_bill'] = (
+    merged["no_service_bill"] = (
         (merged["asset_status"] != "Active") &
         (merged.get("billing_account_status", "") == "Active")
     )
 
+    # ---------------- RESULTS ----------------
     result_df = merged[[
         "siebel_account_id",
         "asset_id",
@@ -95,15 +107,27 @@ if st.session_state.get('confirmed', False):
         "billing_account_status",
         "service_no_bill",
         "no_service_bill"
-    ]]
+    ]].drop_duplicates()
 
-    st.subheader("📊 Completeness Report")
+    # ---------------- KPI SUMMARY ----------------
+    st.subheader("📊 Completeness Summary")
+    total = len(result_df)
+    service_no_bill = result_df["service_no_bill"].sum()
+    no_service_bill = result_df["no_service_bill"].sum()
+
+    st.metric("Total Records", total)
+    st.metric("Service No Bill", service_no_bill)
+    st.metric("No Service Bill", no_service_bill)
+    st.metric("Overall Completeness (%)", round(((total - (service_no_bill + no_service_bill)) / total) * 100, 2))
+
+    # ---------------- DETAILED TABLE ----------------
+    st.subheader("📋 Completeness Report Details")
     st.dataframe(result_df)
 
     # ---------------- DOWNLOAD OPTION ----------------
     csv = result_df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="Download CSV",
+        label="⬇️ Download CSV",
         data=csv,
         file_name=f"{selected_product}_completeness_report.csv",
         mime="text/csv"
