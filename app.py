@@ -36,7 +36,7 @@ if st.sidebar.button("Confirm Selection"):
     st.session_state['confirmed'] = True
 
 if st.session_state.get('confirmed', False):
-    st.success(f"Running {control_type} control for product: **{selected_product}**")
+    st.success(f"🚀 Running {control_type} control for product: **{selected_product}**")
 
     # ---------------- FETCH DATA ----------------
     accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_accounts`")
@@ -101,13 +101,13 @@ if st.session_state.get('confirmed', False):
     # ---------------- KPI CLASSIFICATION ----------------
     def classify_kpi(row):
         if row["asset_status"] == "Active" and row["billing_account_status"] == "Active":
-            return "Happy Path"
+            return "✅ Happy Path"
         elif row["service_no_bill"]:
-            return "Service No Bill"
+            return "⚠️ Service No Bill"
         elif row["no_service_bill"]:
-            return "Bill No Service"
+            return "🚨 Bill No Service"
         else:
-            return "Other"
+            return "❔ Other"
 
     merged["KPI"] = merged.apply(classify_kpi, axis=1)
 
@@ -125,16 +125,29 @@ if st.session_state.get('confirmed', False):
 
     # ---------------- KPI SUMMARY ----------------
     st.subheader("📊 Completeness Summary")
-    total = len(result_df)
-    service_no_bill = result_df["service_no_bill"].sum()
-    no_service_bill = result_df["no_service_bill"].sum()
-    happy_path = (result_df["KPI"] == "Happy Path").sum()
 
-    st.metric("Total Records", total)
-    st.metric("Happy Path", happy_path)
-    st.metric("Service No Bill", service_no_bill)
-    st.metric("No Service Bill", no_service_bill)
-    st.metric("Overall Completeness (%)", round(((happy_path / total) * 100), 2))
+    total = len(result_df)
+    happy_path = (result_df["KPI"] == "✅ Happy Path").sum()
+    service_no_bill = (result_df["KPI"] == "⚠️ Service No Bill").sum()
+    no_service_bill = (result_df["KPI"] == "🚨 Bill No Service").sum()
+
+    completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
+
+    # --- ROW 1: Total + Completeness ---
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("🧾 Total Records", f"{total:,}")
+    with c2:
+        st.metric("📈 Overall Completeness (%)", f"{completeness_pct} %")
+
+    # --- ROW 2: KPI Breakdown ---
+    c3, c4, c5 = st.columns(3)
+    with c3:
+        st.metric("✅ Happy Path", f"{happy_path:,}")
+    with c4:
+        st.metric("⚠️ Service No Bill", f"{service_no_bill:,}")
+    with c5:
+        st.metric("🚨 Bill No Service", f"{no_service_bill:,}")
 
     # ---------------- DETAILED TABLE ----------------
     st.subheader("📋 Completeness Report Details")
