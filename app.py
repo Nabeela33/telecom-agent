@@ -52,7 +52,7 @@ if st.session_state.get('confirmed', False):
     if 'account_id' in accounts.columns:
         accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
     if 'account_id' in assets.columns:
-        assets = assets.rename(columns={"account_id": "siebel_asset_account_id", "status": "asset_status"})
+        assets = assets.rename(columns={"account_id": "siebel_asset_account_id"})
     if 'account_id' in orders.columns:
         orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
     if 'account_id' in billing_accounts.columns:
