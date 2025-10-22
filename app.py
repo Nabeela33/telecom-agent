@@ -97,19 +97,11 @@ if st.session_state.get('confirmed', False):
     # ✅ Drop duplicate columns safely
     merged = merged.loc[:, ~merged.columns.duplicated()]
 
-    # ✅ Clean up billing_service_number to remove commas and enforce string type
-    if "billing_service_number" in merged.columns:
-        merged["billing_service_number"] = (
-            merged["billing_service_number"]
-            .astype(str)
-            .str.replace(",", "", regex=False)
-        )
-    if "siebel_service_number" in merged.columns:
-        merged["siebel_service_number"] = (
-            merged["siebel_service_number"]
-            .astype(str)
-            .str.replace(",", "", regex=False)
-        )
+    # ✅ Clean up service numbers (remove commas and ensure string type)
+    for col in ["billing_service_number", "siebel_service_number"]:
+        if col in merged.columns:
+            merged[col] = merged[col].astype(str).str.replace(",", "", regex=False)
+
     # ---------------- COMPLETENESS KPIS (SERVICE LEVEL) ----------------
     merged["service_no_bill"] = (
         (merged["asset_status"] == "Active") &
@@ -136,9 +128,9 @@ if st.session_state.get('confirmed', False):
 
     # ---------------- RESULTS ----------------
     result_df = merged[[
-        "billing_service_number",   # unified service number
-        "siebel_account_id",
+        "billing_service_number",
         "siebel_service_number",
+        "siebel_account_id",
         "asset_id",
         "product_name",
         "asset_status",
@@ -158,27 +150,24 @@ if st.session_state.get('confirmed', False):
 
     completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
 
-    # --- ROW 1: Total + Completeness ---
     c1, c2 = st.columns(2)
     with c1:
         st.metric("🧾 Total Records", f"{total:,}")
     with c2:
         st.metric("📈 Happy Path (%)", f"{completeness_pct} %")
 
-    # --- ROW 2: KPI Breakdown ---
     c3, c4, c5 = st.columns(3)
     with c3:
-        st.metric("Happy Path", f"{happy_path:,}")
+        st.metric("✅ Happy Path", f"{happy_path:,}")
     with c4:
-        st.metric("Service No Bill", f"{service_no_bill:,}")
+        st.metric("⚠️ Service No Bill", f"{service_no_bill:,}")
     with c5:
-        st.metric("Bill No Service", f"{no_service_bill:,}")
+        st.metric("🚫 Bill No Service", f"{no_service_bill:,}")
 
     # ---------------- DETAILED TABLE ----------------
     st.subheader("📋 Completeness Report Details")
     st.dataframe(result_df)
 
-    # ---------------- DOWNLOAD OPTION ----------------
     csv = result_df.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇️ Download CSV",
@@ -186,3 +175,38 @@ if st.session_state.get('confirmed', False):
         file_name=f"{selected_product}_completeness_report.csv",
         mime="text/csv"
     )
+
+    # ---------------- INTERACTIVE INSIGHT SECTION ----------------
+    st.markdown("---")
+    st.subheader("🔍 Investigate Exceptions")
+
+    issue_type = st.radio(
+        "Select the issue type to explore:",
+        ["Service No Bill", "Bill No Service"],
+        horizontal=True
+    )
+
+    filtered = result_df[result_df["KPI"] == issue_type]
+
+    if len(filtered) == 0:
+        st.warning(f"No records found for **{issue_type}** issues.")
+    else:
+        top_accounts = (
+            filtered.groupby("siebel_account_id")
+            .size()
+            .reset_index(name="exception_count")
+            .sort_values("exception_count", ascending=False)
+            .head(10)
+        )
+
+        st.markdown(f"### 📊 Top 10 Accounts with Most **{issue_type}** Exceptions")
+        st.dataframe(top_accounts)
+
+        # Download filtered results
+        issue_csv = filtered.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label=f"⬇️ Download {issue_type} Records",
+            data=issue_csv,
+            file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
+            mime="text/csv"
+        )
