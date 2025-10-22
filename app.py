@@ -260,8 +260,7 @@ else:
         .sort_values("exception_count", ascending=False)
         .head(10)
     )
-    st.markdown(f"### 📊 Top 10 Accounts + Service Numbers with Most **{issue_type}** Exceptions")
-    st.dataframe(top_accounts)
+
 
     issue_csv = filtered.to_csv(index=False).encode("utf-8")
     st.download_button(
