@@ -52,14 +52,21 @@ if st.session_state.get('confirmed', False):
     if 'account_id' in accounts.columns:
         accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
     if 'account_id' in assets.columns:
-        assets = assets.rename(columns={"account_id": "siebel_asset_account_id"})
+        assets = assets.rename(columns={
+            "account_id": "siebel_asset_account_id",
+            "service_number": "siebel_service_number"   # ✅ added
+        })
     if 'account_id' in orders.columns:
-        orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
+        orders = orders.rename(columns={
+            "account_id": "siebel_order_account_id",
+            "service_number": "siebel_service_number"   # ✅ added
+        })
     if 'account_id' in billing_accounts.columns:
         billing_accounts = billing_accounts.rename(columns={
             "account_id": "billing_account_siebel_account_id",
             "billing_account_id": "billing_account_id_bacc",
-            "status": "billing_account_status"
+            "status": "billing_account_status",
+            "service_number": "billing_service_number"  # ✅ added
         })
     if 'billing_account_id' in billing_products.columns:
         billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
@@ -73,12 +80,12 @@ if st.session_state.get('confirmed', False):
             accounts, left_on="billing_account_siebel_account_id", right_on="siebel_account_id", how="left"
         )
         .merge(
-            assets, on=["asset_id", "service_number"], how="left"   # ✅ added service_number join
+            assets, left_on=["asset_id", "billing_service_number"], right_on=["asset_id", "siebel_service_number"], how="left"
         )
         .merge(
             orders,
-            left_on=["asset_id", "siebel_account_id", "service_number"],
-            right_on=["asset_id", "siebel_order_account_id", "service_number"],
+            left_on=["asset_id", "siebel_account_id", "billing_service_number"],
+            right_on=["asset_id", "siebel_order_account_id", "siebel_service_number"],
             how="left",
             suffixes=("", "_order")
         )
@@ -113,7 +120,7 @@ if st.session_state.get('confirmed', False):
 
     # ---------------- RESULTS ----------------
     result_df = merged[[
-        "service_number",   # ✅ added for service-level reporting
+        "billing_service_number",   # ✅ using unified service_number
         "siebel_account_id",
         "asset_id",
         "product_name",
