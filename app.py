@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st
 from utils import load_mapping
 from vertex_client import VertexAgent
 from bigquery_client import BigQueryAgent
@@ -34,6 +34,8 @@ selected_product = st.sidebar.selectbox("Select Product", product_list)
 
 if st.sidebar.button("Confirm Selection"):
     st.session_state['confirmed'] = True
+    # reset any follow-up choices each time a new selection is confirmed
+    st.session_state.pop("show_exceptions", None)
 
 if st.session_state.get('confirmed', False):
     st.success(f"🚀 Running {control_type} control for product: **{selected_product}**")
@@ -104,22 +106,22 @@ if st.session_state.get('confirmed', False):
 
     # ---------------- COMPLETENESS KPIS (SERVICE LEVEL) ----------------
     merged["service_no_bill"] = (
-        (merged["asset_status"] == "Active") &
+        (merged.get("asset_status", "") == "Active") &
         (merged.get("billing_account_status", "") != "Active")
     )
 
     merged["no_service_bill"] = (
-        (merged["asset_status"] != "Active") &
+        (merged.get("asset_status", "") != "Active") &
         (merged.get("billing_account_status", "") == "Active")
     )
 
     # ---------------- KPI CLASSIFICATION ----------------
     def classify_kpi(row):
-        if row["asset_status"] == "Active" and row["billing_account_status"] == "Active":
+        if row.get("asset_status") == "Active" and row.get("billing_account_status") == "Active":
             return "Happy Path"
-        elif row["service_no_bill"]:
+        elif row.get("service_no_bill"):
             return "Service No Bill"
-        elif row["no_service_bill"]:
+        elif row.get("no_service_bill"):
             return "Bill No Service"
         else:
             return "DI Issue"
@@ -150,6 +152,7 @@ if st.session_state.get('confirmed', False):
 
     completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
 
+    # Top KPI cards (arranged nicely)
     c1, c2 = st.columns(2)
     with c1:
         st.metric("🧾 Total Records", f"{total:,}")
@@ -176,40 +179,68 @@ if st.session_state.get('confirmed', False):
         mime="text/csv"
     )
 
-    # ---------------- INTERACTIVE INSIGHT SECTION ----------------
+    # ---------------- FOLLOW-UP QUESTION (STEP-BY-STEP) ----------------
     st.markdown("---")
-    st.subheader("🔍 Investigate Exceptions")
-
-    issue_type = st.radio(
-        "Select the issue type to explore:",
-        ["Service No Bill", "Bill No Service"],
-        horizontal=True
+    st.markdown("**Next step — do you want to investigate exceptions?**")
+    investigate_choice = st.radio(
+        "Show top 10 accounts with exceptions?",
+        options=["No", "Yes"],
+        index=0,
+        horizontal=True,
+        key="investigate_radio"
     )
 
-    filtered = result_df[result_df["KPI"] == issue_type]
+    # store choice in session_state so it persists and is explicit
+    st.session_state["show_exceptions"] = (investigate_choice == "Yes")
 
-    if len(filtered) == 0:
-        st.warning(f"No records found for **{issue_type}** issues.")
-    else:
-        # Show detailed records: account, service numbers, and statuses
-        detailed_view = filtered[[
-            "siebel_account_id",
-            "billing_service_number",
-            "siebel_service_number",
-            "asset_status",
-            "billing_account_status",
-            "product_name",
-            "KPI"
-        ]]
+    # only show investigation UI when user answers Yes
+    if st.session_state.get("show_exceptions", False):
+        st.subheader("🔍 Investigate Exceptions")
 
-        st.markdown(f"### 📋 Detailed {issue_type} Records (Top 10 by Account)")
-        st.dataframe(detailed_view.head(10))
-
-        # Download filtered results
-        issue_csv = filtered.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label=f"⬇️ Download {issue_type} Records",
-            data=issue_csv,
-            file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
-            mime="text/csv"
+        issue_type = st.radio(
+            "Select the issue type to explore:",
+            ["Service No Bill", "Bill No Service"],
+            horizontal=True,
+            key="issue_radio"
         )
+
+        filtered = result_df[result_df["KPI"] == issue_type]
+
+        if len(filtered) == 0:
+            st.warning(f"No records found for **{issue_type}** issues.")
+        else:
+            # Expand rows: allow same account to appear multiple times with different service numbers
+            detailed_view = filtered[[
+                "siebel_account_id",
+                "billing_service_number",
+                "siebel_service_number",
+                "asset_id",
+                "asset_status",
+                "billing_account_status",
+                "product_name",
+                "KPI"
+            ]]
+
+            st.markdown(f"### 📋 Detailed {issue_type} Records (Top 10 rows)")
+            st.dataframe(detailed_view.head(10))
+
+            # Top 10 accounts by exception count (account+service rows allowed)
+            top_accounts = (
+                filtered.groupby(["siebel_account_id", "billing_service_number"])
+                .size()
+                .reset_index(name="exception_count")
+                .sort_values("exception_count", ascending=False)
+                .head(10)
+            )
+
+            st.markdown(f"### 📊 Top 10 (Account + Service) with Most **{issue_type}** Exceptions")
+            st.dataframe(top_accounts)
+
+            # Download filtered results
+            issue_csv = filtered.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label=f"⬇️ Download {issue_type} Records",
+                data=issue_csv,
+                file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
+                mime="text/csv"
+            )
