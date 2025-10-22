@@ -1,215 +1,136 @@
-import streamlit as st 
+import streamlit as st
 from utils import load_mapping
 from vertex_client import VertexAgent
 from bigquery_client import BigQueryAgent
 import pandas as pd
+import re
 
 # ---------------- CONFIG ----------------
 PROJECT_ID = "telecom-data-lake"
 REGION = "europe-west2"
 BUCKET_NAME = "stage_data1/Mapping files"
 
-# ---------------- LOAD MAPPINGS ----------------
-st.sidebar.title("Configuration")
-st.sidebar.info("Select control type and product to run the report.")
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("⚙️ Configuration")
+st.sidebar.info("Mappings guide SQL generation across systems.")
+st.sidebar.caption("Powered by Gemini 2.5 Flash + BigQuery")
 
-siebel_mapping = load_mapping(BUCKET_NAME, "siebel_mapping.txt")
-antillia_mapping = load_mapping(BUCKET_NAME, "antillia_mapping.txt")
-
-# ---------------- INIT AGENTS ----------------
+# ---------------- INIT ----------------
 vertex_agent = VertexAgent(PROJECT_ID, REGION)
 bq_agent = BigQueryAgent(PROJECT_ID)
 
-# ---------------- STREAMLIT UI ----------------
-st.title("🛡️ Data Quality Controls")
-st.markdown("Select a product and control type to generate the completeness report")
+# Preload mappings silently
+siebel_mapping = load_mapping(BUCKET_NAME, "siebel_mapping.txt")
+antillia_mapping = load_mapping(BUCKET_NAME, "antillia_mapping.txt")
 
-# ---------------- SIDEBAR ----------------
-control_type = st.sidebar.selectbox("Select Control Type", ["Completeness"])
+# ---------------- STREAMLIT STATE ----------------
+if "df" not in st.session_state:
+    st.session_state.df = None
+if "sql_query" not in st.session_state:
+    st.session_state.sql_query = None
+if "table_name" not in st.session_state:
+    st.session_state.table_name = None
 
-# Dynamically fetch product list
-product_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
-product_list = product_df['product_name'].tolist()
-selected_product = st.sidebar.selectbox("Select Product", product_list)
+# ---------------- MAIN UI ----------------
+st.title("📊 Telecom Data Assistant")
+st.markdown("Hello!!! Ask me about your data — I’ll understand your question, write SQL, and show the results!")
 
-if st.sidebar.button("Confirm Selection"):
-    st.session_state['confirmed'] = True
+prompt = st.text_area("💬 Your question:")
 
-if st.session_state.get('confirmed', False):
-    st.success(f"🚀 Running {control_type} control for product: **{selected_product}**")
-
-    # ---------------- FETCH DATA ----------------
-    accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_accounts`")
-    assets = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_assets`")
-    orders = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_orders`")
-    billing_accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.gibantillia.billing_accounts`")
-    billing_products = bq_agent.execute(f"""
-        SELECT * FROM `telecom-data-lake.gibantillia.billing_products`
-        WHERE product_name = '{selected_product}'
-    """)
-
-    # ---------------- SAFE RENAMING ----------------
-    if 'account_id' in accounts.columns:
-        accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
-
-    if 'account_id' in assets.columns:
-        assets = assets.rename(columns={
-            "account_id": "siebel_asset_account_id"
-        })
-        if 'service_number' in assets.columns:
-            assets = assets.rename(columns={"service_number": "siebel_service_number"})
-
-    if 'account_id' in orders.columns:
-        orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
-
-    if 'account_id' in billing_accounts.columns:
-        billing_accounts = billing_accounts.rename(columns={
-            "account_id": "billing_account_siebel_account_id",
-            "billing_account_id": "billing_account_id_bacc",
-            "status": "billing_account_status"
-        })
-        if 'service_number' in billing_accounts.columns:
-            billing_accounts = billing_accounts.rename(columns={"service_number": "billing_service_number"})
-
-    if 'billing_account_id' in billing_products.columns:
-        billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
-
-    # ---------------- MERGE LOGIC ----------------
-    merged = (
-        billing_products.merge(
-            billing_accounts, left_on="billing_account_id_bp", right_on="billing_account_id_bacc", how="left"
-        )
-        .merge(
-            accounts, left_on="billing_account_siebel_account_id", right_on="siebel_account_id", how="left"
-        )
-        .merge(
-            assets, left_on=["asset_id", "billing_service_number"], right_on=["asset_id", "siebel_service_number"], how="left"
-        )
-        .merge(
-            orders,
-            left_on=["asset_id", "siebel_account_id"],
-            right_on=["asset_id", "siebel_order_account_id"],
-            how="left",
-            suffixes=("", "_order")
-        )
-    )
-
-    # ✅ Drop duplicate columns safely
-    merged = merged.loc[:, ~merged.columns.duplicated()]
-
-    # ✅ Clean up service numbers (remove commas and ensure string type)
-    for col in ["billing_service_number", "siebel_service_number"]:
-        if col in merged.columns:
-            merged[col] = merged[col].astype(str).str.replace(",", "", regex=False)
-
-    # ---------------- COMPLETENESS KPIS (SERVICE LEVEL) ----------------
-    merged["service_no_bill"] = (
-        (merged["asset_status"] == "Active") &
-        (merged.get("billing_account_status", "") != "Active")
-    )
-
-    merged["no_service_bill"] = (
-        (merged["asset_status"] != "Active") &
-        (merged.get("billing_account_status", "") == "Active")
-    )
-
-    # ---------------- KPI CLASSIFICATION ----------------
-    def classify_kpi(row):
-        if row["asset_status"] == "Active" and row["billing_account_status"] == "Active":
-            return "Happy Path"
-        elif row["service_no_bill"]:
-            return "Service No Bill"
-        elif row["no_service_bill"]:
-            return "Bill No Service"
-        else:
-            return "DI Issue"
-
-    merged["KPI"] = merged.apply(classify_kpi, axis=1)
-
-    # ---------------- RESULTS ----------------
-    result_df = merged[[
-        "billing_service_number",
-        "siebel_service_number",
-        "siebel_account_id",
-        "asset_id",
-        "product_name",
-        "asset_status",
-        "billing_account_status",
-        "KPI",
-        "service_no_bill",
-        "no_service_bill"
-    ]].drop_duplicates()
-
-    # ---------------- KPI SUMMARY ----------------
-    st.subheader("🧩 Completeness Summary")
-
-    total = len(result_df)
-    happy_path = (result_df["KPI"] == "Happy Path").sum()
-    service_no_bill = (result_df["KPI"] == "Service No Bill").sum()
-    no_service_bill = (result_df["KPI"] == "Bill No Service").sum()
-
-    completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.metric("🧾 Total Records", f"{total:,}")
-    with c2:
-        st.metric("📈 Happy Path (%)", f"{completeness_pct} %")
-
-    c3, c4, c5 = st.columns(3)
-    with c3:
-        st.metric("✅ Happy Path", f"{happy_path:,}")
-    with c4:
-        st.metric("⚠️ Service No Bill", f"{service_no_bill:,}")
-    with c5:
-        st.metric("🚫 Bill No Service", f"{no_service_bill:,}")
-
-    # ---------------- DETAILED TABLE ----------------
-    st.subheader("📋 Completeness Report Details")
-    st.dataframe(result_df)
-
-    csv = result_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="⬇️ Download CSV",
-        data=csv,
-        file_name=f"{selected_product}_completeness_report.csv",
-        mime="text/csv"
-    )
-
-    # ---------------- INTERACTIVE INSIGHT SECTION ----------------
-    st.markdown("---")
-    st.subheader("🔍 Investigate Exceptions")
-
-    issue_type = st.radio(
-        "Select the issue type to explore:",
-        ["Service No Bill", "Bill No Service"],
-        horizontal=True
-    )
-
-    filtered = result_df[result_df["KPI"] == issue_type]
-
-    if len(filtered) == 0:
-        st.warning(f"No records found for **{issue_type}** issues.")
+if st.button("🚀 Run Query"):
+    if not prompt.strip():
+        st.warning("Please enter a question or query prompt!")
     else:
-        # Show detailed records: account, service numbers, and statuses
-        detailed_view = filtered[[
-            "siebel_account_id",
-            "billing_service_number",
-            "siebel_service_number",
-            "asset_status",
-            "billing_account_status",
-            "product_name",
-            "KPI"
-        ]]
+        try:
+            with st.spinner("🧠 Generating SQL using Gemini..."):
+                sql_query = vertex_agent.prompt_to_sql(prompt, siebel_mapping, antillia_mapping)
+                st.session_state.sql_query = sql_query
 
-        st.markdown(f"### 📋 Detailed {issue_type} Records (Top 10 by Account)")
-        st.dataframe(detailed_view.head(10))
+            st.subheader("🪄 Generated SQL")
+            st.code(sql_query, language="sql")
 
-        # Download filtered results
-        issue_csv = filtered.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label=f"⬇️ Download {issue_type} Records",
-            data=issue_csv,
-            file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
-            mime="text/csv"
-        )
+            # Extract table name for future use
+            match = re.search(r'`([\w\-]+\.[\w\-]+\.[\w\-]+)`', sql_query)
+            if match:
+                st.session_state.table_name = match.group(1)
+                st.info(f"📂 Target Table: `{st.session_state.table_name}`")
+
+            with st.spinner("📡 Running SQL in BigQuery..."):
+                df = bq_agent.execute(sql_query)
+                st.session_state.df = df
+
+            st.success(f"✅ Query executed successfully! {len(df)} rows returned.")
+            st.dataframe(st.session_state.df)
+
+            # Download CSV
+            csv_data = df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Download Results as CSV",
+                data=csv_data,
+                file_name="query_results.csv",
+                mime="text/csv"
+            )
+
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+
+# ---------------- CONVERSATIONAL FOLLOW-UP ----------------
+if st.session_state.sql_query:
+    st.markdown("---")
+    st.markdown("🤖 **What would you like to do next?**")
+
+    next_action = st.radio(
+        "Choose an action:",
+        ["Nothing, thanks", "Filter this data", "Visualize something", "Summarize these results"],
+        key="next_action"
+    )
+
+    # Get the table name from session
+    table_name = st.session_state.table_name
+
+    if next_action in ["Filter this data", "Visualize something"]:
+        if not table_name:
+            st.warning("I couldn’t detect which table was used in the last query.")
+        else:
+            with st.spinner(f"🔍 Fetching data from `{table_name}`..."):
+                df_full = bq_agent.execute(f"SELECT * FROM `{table_name}` LIMIT 1000")
+
+            if next_action == "Filter this data":
+                st.subheader(f"🔎 Filter Data from `{table_name}`")
+
+                columns = df_full.columns.tolist()
+                selected_col = st.selectbox("Select a column to filter:", columns)
+                unique_vals = df_full[selected_col].dropna().unique().tolist()
+
+                if len(unique_vals) > 100:
+                    st.info("Too many unique values. Showing first 100.")
+                    unique_vals = unique_vals[:100]
+
+                selected_val = st.selectbox("Select a value:", unique_vals)
+                filtered_df = df_full[df_full[selected_col] == selected_val]
+                st.dataframe(filtered_df)
+
+                csv_data = filtered_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Filtered Data",
+                    data=csv_data,
+                    file_name="filtered_results.csv",
+                    mime="text/csv"
+                )
+
+            elif next_action == "Visualize something":
+                st.subheader(f"📊 Visualize Data from `{table_name}`")
+                numeric_cols = df_full.select_dtypes(include="number").columns.tolist()
+
+                if not numeric_cols:
+                    st.warning("No numeric columns found for visualization.")
+                else:
+                    selected_col = st.selectbox("Select a numeric column to visualize:", numeric_cols)
+                    st.bar_chart(df_full[selected_col])
+
+    elif next_action == "Summarize these results":
+        st.subheader("🧠 Summary from Gemini")
+        with st.spinner("✨ Generating summary..."):
+            summary_prompt = f"Summarize key insights from this dataset:\n\n{st.session_state.df.head(20).to_string()}"
+            summary = vertex_agent.prompt_to_sql(summary_prompt, siebel_mapping, antillia_mapping)
+        st.write(summary)
