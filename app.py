@@ -51,22 +51,26 @@ if st.session_state.get('confirmed', False):
     # ---------------- SAFE RENAMING ----------------
     if 'account_id' in accounts.columns:
         accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
+
     if 'account_id' in assets.columns:
         assets = assets.rename(columns={
-            "account_id": "siebel_asset_account_id",
-            "service_number": "siebel_service_number"   # ✅ added
+            "account_id": "siebel_asset_account_id"
         })
+        if 'service_number' in assets.columns:
+            assets = assets.rename(columns={"service_number": "siebel_service_number"})
+
     if 'account_id' in orders.columns:
-        orders = orders.rename(columns={
-            "account_id": "siebel_order_account_id"
-        })
+        orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
+
     if 'account_id' in billing_accounts.columns:
         billing_accounts = billing_accounts.rename(columns={
             "account_id": "billing_account_siebel_account_id",
             "billing_account_id": "billing_account_id_bacc",
-            "status": "billing_account_status",
-            "service_number": "billing_service_number"  # ✅ added
+            "status": "billing_account_status"
         })
+        if 'service_number' in billing_accounts.columns:
+            billing_accounts = billing_accounts.rename(columns={"service_number": "billing_service_number"})
+
     if 'billing_account_id' in billing_products.columns:
         billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
 
@@ -83,8 +87,8 @@ if st.session_state.get('confirmed', False):
         )
         .merge(
             orders,
-            left_on=["asset_id", "siebel_account_id", "billing_service_number"],
-            right_on=["asset_id", "siebel_order_account_id", "siebel_service_number"],
+            left_on=["asset_id", "siebel_account_id"],
+            right_on=["asset_id", "siebel_order_account_id"],
             how="left",
             suffixes=("", "_order")
         )
@@ -119,7 +123,7 @@ if st.session_state.get('confirmed', False):
 
     # ---------------- RESULTS ----------------
     result_df = merged[[
-        "billing_service_number",   # ✅ using unified service_number
+        "billing_service_number",   # unified service number
         "siebel_account_id",
         "asset_id",
         "product_name",
