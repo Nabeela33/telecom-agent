@@ -205,21 +205,10 @@ if st.session_state.get('confirmed', False):
         st.markdown(f"### 📋 Detailed {issue_type} Records (Top 10 by Account)")
         st.dataframe(detailed_view.head(10))
 
-        # Also show account-level summary for context
-        st.markdown(f"### 📊 Account Summary for **{issue_type}**")
-        top_accounts = (
-            filtered.groupby("siebel_account_id")
-            .size()
-            .reset_index(name="exception_count")
-            .sort_values("exception_count", ascending=False)
-            .head(10)
-        )
-        st.dataframe(top_accounts)
-
         # Download filtered results
         issue_csv = filtered.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label=f"⬇️ Download {issue_type} Records (Full)",
+            label=f"⬇️ Download {issue_type} Records",
             data=issue_csv,
             file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
             mime="text/csv"
