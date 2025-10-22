@@ -58,8 +58,7 @@ if st.session_state.get('confirmed', False):
         })
     if 'account_id' in orders.columns:
         orders = orders.rename(columns={
-            "account_id": "siebel_order_account_id",
-            "service_number": "siebel_service_number"   # ✅ added
+            "account_id": "siebel_order_account_id"
         })
     if 'account_id' in billing_accounts.columns:
         billing_accounts = billing_accounts.rename(columns={
