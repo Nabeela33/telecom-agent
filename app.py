@@ -11,7 +11,7 @@ BUCKET_NAME = "stage_data1/Mapping files"
 
 # ---------------- LOAD MAPPINGS ----------------
 st.sidebar.title("Configuration")
-st.sidebar.info("Select control type and product to run the completeness report.")
+st.sidebar.info("Select control type and product to run the report.")
 
 siebel_mapping = load_mapping(BUCKET_NAME, "siebel_mapping.txt")
 antillia_mapping = load_mapping(BUCKET_NAME, "antillia_mapping.txt")
