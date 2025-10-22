@@ -104,7 +104,12 @@ if st.session_state.get('confirmed', False):
             .astype(str)
             .str.replace(",", "", regex=False)
         )
-
+    if "siebel_service_number" in merged.columns:
+        merged["siebel_service_number"] = (
+            merged["siebel_service_number"]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+        )
     # ---------------- COMPLETENESS KPIS (SERVICE LEVEL) ----------------
     merged["service_no_bill"] = (
         (merged["asset_status"] == "Active") &
