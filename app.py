@@ -97,6 +97,14 @@ if st.session_state.get('confirmed', False):
     # ✅ Drop duplicate columns safely
     merged = merged.loc[:, ~merged.columns.duplicated()]
 
+    # ✅ Clean up billing_service_number to remove commas and enforce string type
+    if "billing_service_number" in merged.columns:
+        merged["billing_service_number"] = (
+            merged["billing_service_number"]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+        )
+
     # ---------------- COMPLETENESS KPIS (SERVICE LEVEL) ----------------
     merged["service_no_bill"] = (
         (merged["asset_status"] == "Active") &
@@ -125,6 +133,7 @@ if st.session_state.get('confirmed', False):
     result_df = merged[[
         "billing_service_number",   # unified service number
         "siebel_account_id",
+        "siebel_service_number",
         "asset_id",
         "product_name",
         "asset_status",
