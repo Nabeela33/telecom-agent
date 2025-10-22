@@ -191,6 +191,22 @@ if st.session_state.get('confirmed', False):
     if len(filtered) == 0:
         st.warning(f"No records found for **{issue_type}** issues.")
     else:
+        # Show detailed records: account, service numbers, and statuses
+        detailed_view = filtered[[
+            "siebel_account_id",
+            "billing_service_number",
+            "siebel_service_number",
+            "asset_status",
+            "billing_account_status",
+            "product_name",
+            "KPI"
+        ]]
+
+        st.markdown(f"### 📋 Detailed {issue_type} Records (Top 10 by Account)")
+        st.dataframe(detailed_view.head(10))
+
+        # Also show account-level summary for context
+        st.markdown(f"### 📊 Account Summary for **{issue_type}**")
         top_accounts = (
             filtered.groupby("siebel_account_id")
             .size()
@@ -198,14 +214,12 @@ if st.session_state.get('confirmed', False):
             .sort_values("exception_count", ascending=False)
             .head(10)
         )
-
-        st.markdown(f"### 📊 Top 10 Accounts with Most **{issue_type}** Exceptions")
         st.dataframe(top_accounts)
 
         # Download filtered results
         issue_csv = filtered.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label=f"⬇️ Download {issue_type} Records",
+            label=f"⬇️ Download {issue_type} Records (Full)",
             data=issue_csv,
             file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
             mime="text/csv"
