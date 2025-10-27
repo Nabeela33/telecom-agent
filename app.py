@@ -9,8 +9,9 @@ PROJECT_ID = "telecom-data-lake"
 REGION = "europe-west2"
 BUCKET_NAME = "stage_data1/Mapping files"
 
-# ---------------- INIT ----------------
-st.set_page_config(page_title="Data Quality Controls", layout="wide")
+# ---------------- PAGE SETUP ----------------
+st.set_page_config(page_title="Data Quality Controls Assistant", layout="wide")
+st.title("🤖 Data Quality Controls Assistant")
 
 # ---------------- LOAD MAPPINGS ----------------
 siebel_mapping = load_mapping(BUCKET_NAME, "siebel_mapping.txt")
@@ -20,253 +21,240 @@ antillia_mapping = load_mapping(BUCKET_NAME, "antillia_mapping.txt")
 vertex_agent = VertexAgent(PROJECT_ID, REGION)
 bq_agent = BigQueryAgent(PROJECT_ID)
 
-# ---------------- HEADER ----------------
-st.title("🛡️ Data Quality Controls Assistant")
-st.markdown("Welcome! Let's walk through step-by-step to generate your data quality report.")
-
-# Helper to reset
-def reset_session():
-    for key in ["control_type", "selected_product", "confirmed", "show_exceptions"]:
-        if key in st.session_state:
-            del st.session_state[key]
-
-# ---------------- STEP 1: Select Control Type ----------------
+# ---------------- SESSION STATE ----------------
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "stage" not in st.session_state:
+    st.session_state.stage = "ask_control"
 if "control_type" not in st.session_state:
-    st.subheader("🧩 Step 1: Choose Control Type")
-    control_type = st.selectbox("Which data quality control would you like to run?", ["Completeness"])
-    if st.button("Next ➡️"):
-        st.session_state["control_type"] = control_type
-        st.rerun()
-    st.stop()
+    st.session_state.control_type = None
+if "product" not in st.session_state:
+    st.session_state.product = None
+if "confirmed" not in st.session_state:
+    st.session_state.confirmed = False
+if "show_exceptions" not in st.session_state:
+    st.session_state.show_exceptions = False
 
-# ---------------- STEP 2: Select Product ----------------
-if "selected_product" not in st.session_state:
-    st.subheader("🛠️ Step 2: Select Product")
+# ---------------- CHAT DISPLAY ----------------
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# ---------------- STAGE HANDLERS ----------------
+
+def add_assistant_message(text):
+    st.session_state.messages.append({"role": "assistant", "content": text})
+
+def add_user_message(text):
+    st.session_state.messages.append({"role": "user", "content": text})
+
+def reset_chat():
+    st.session_state.clear()
+    st.rerun()
+
+# ---------------- CONTROL LOGIC ----------------
+
+if st.session_state.stage == "ask_control":
+    if len(st.session_state.messages) == 0:
+        add_assistant_message("👋 Hi there! I’m your Data Quality Assistant.\n\nWhich control type would you like to run today?")
+        st.rerun()
+
+    user_input = st.chat_input("Type your control type (e.g., Completeness)")
+    if user_input:
+        add_user_message(user_input)
+        st.session_state.control_type = user_input.strip().title()
+        add_assistant_message(f"Great choice! You’ve selected **{st.session_state.control_type}** control. Let’s pick a product next.")
+        st.session_state.stage = "ask_product"
+        st.rerun()
+
+elif st.session_state.stage == "ask_product":
     product_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
     product_list = sorted(product_df['product_name'].dropna().tolist())
 
-    selected_product = st.selectbox("Please choose a product:", product_list)
-
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("⬅️ Back"):
-            del st.session_state["control_type"]
-            st.rerun()
-    with col2:
-        if st.button("Next ➡️"):
-            st.session_state["selected_product"] = selected_product
-            st.rerun()
-    st.stop()
-
-# ---------------- STEP 3: Confirm Selection ----------------
-if "confirmed" not in st.session_state:
-    st.subheader("✅ Step 3: Confirm Selection")
-    st.markdown(f"You've chosen to run **{st.session_state['control_type']}** control for product **{st.session_state['selected_product']}**.")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔁 Start Over"):
-            reset_session()
-            st.rerun()
-    with col2:
-        if st.button("🚀 Confirm and Run"):
-            st.session_state["confirmed"] = True
-            st.rerun()
-    st.stop()
-
-# ---------------- STEP 4: Run Completeness Report ----------------
-st.success(f"🚀 Running {st.session_state['control_type']} control for **{st.session_state['selected_product']}**...")
-
-selected_product = st.session_state["selected_product"]
-
-# ---------------- FETCH DATA ----------------
-accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_accounts`")
-assets = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_assets`")
-orders = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_orders`")
-billing_accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.gibantillia.billing_accounts`")
-billing_products = bq_agent.execute(f"""
-    SELECT * FROM `telecom-data-lake.gibantillia.billing_products`
-    WHERE product_name = '{selected_product}'
-""")
-
-# ---------------- SAFE RENAMING ----------------
-if 'account_id' in accounts.columns:
-    accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
-
-if 'account_id' in assets.columns:
-    assets = assets.rename(columns={
-        "account_id": "siebel_asset_account_id"
-    })
-    if 'service_number' in assets.columns:
-        assets = assets.rename(columns={"service_number": "siebel_service_number"})
-
-if 'account_id' in orders.columns:
-    orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
-
-if 'account_id' in billing_accounts.columns:
-    billing_accounts = billing_accounts.rename(columns={
-        "account_id": "billing_account_siebel_account_id",
-        "billing_account_id": "billing_account_id_bacc",
-        "status": "billing_account_status"
-    })
-    if 'service_number' in billing_accounts.columns:
-        billing_accounts = billing_accounts.rename(columns={"service_number": "billing_service_number"})
-
-if 'billing_account_id' in billing_products.columns:
-    billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
-
-# ---------------- MERGE LOGIC ----------------
-merged = (
-    billing_products.merge(
-        billing_accounts, left_on="billing_account_id_bp", right_on="billing_account_id_bacc", how="left"
-    )
-    .merge(
-        accounts, left_on="billing_account_siebel_account_id", right_on="siebel_account_id", how="left"
-    )
-    .merge(
-        assets, left_on=["asset_id", "billing_service_number"], right_on=["asset_id", "siebel_service_number"], how="left"
-    )
-    .merge(
-        orders,
-        left_on=["asset_id", "siebel_account_id"],
-        right_on=["asset_id", "siebel_order_account_id"],
-        how="left",
-        suffixes=("", "_order")
-    )
-)
-merged = merged.loc[:, ~merged.columns.duplicated()]
-
-# Clean commas
-for col in ["billing_service_number", "siebel_service_number"]:
-    if col in merged.columns:
-        merged[col] = merged[col].astype(str).str.replace(",", "", regex=False)
-
-# ---------------- KPIs ----------------
-merged["service_no_bill"] = (
-    (merged.get("asset_status", "") == "Active") &
-    (merged.get("billing_account_status", "") != "Active")
-)
-merged["no_service_bill"] = (
-    (merged.get("asset_status", "") != "Active") &
-    (merged.get("billing_account_status", "") == "Active")
-)
-
-def classify_kpi(row):
-    if row.get("asset_status") == "Active" and row.get("billing_account_status") == "Active":
-        return "Happy Path"
-    elif row.get("service_no_bill"):
-        return "Service No Bill"
-    elif row.get("no_service_bill"):
-        return "Bill No Service"
-    else:
-        return "DI Issue"
-
-merged["KPI"] = merged.apply(classify_kpi, axis=1)
-
-result_df = merged[[
-    "billing_service_number",
-    "siebel_service_number",
-    "siebel_account_id",
-    "asset_id",
-    "product_name",
-    "asset_status",
-    "billing_account_status",
-    "KPI",
-    "service_no_bill",
-    "no_service_bill"
-]].drop_duplicates()
-
-# ---------------- KPI SUMMARY ----------------
-st.subheader("🧩 Completeness Summary")
-
-total = len(result_df)
-happy_path = (result_df["KPI"] == "Happy Path").sum()
-service_no_bill = (result_df["KPI"] == "Service No Bill").sum()
-no_service_bill = (result_df["KPI"] == "Bill No Service").sum()
-
-completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
-
-c1, c2 = st.columns(2)
-with c1:
-    st.metric("🧾 Total Records", f"{total:,}")
-with c2:
-    st.metric("📈 Happy Path (%)", f"{completeness_pct} %")
-
-c3, c4, c5 = st.columns(3)
-with c3:
-    st.metric("✅ Happy Path", f"{happy_path:,}")
-with c4:
-    st.metric("⚠️ Service No Bill", f"{service_no_bill:,}")
-with c5:
-    st.metric("🚫 Bill No Service", f"{no_service_bill:,}")
-
-# ---------------- DETAILED REPORT ----------------
-st.subheader("📋 Completeness Report Details")
-st.dataframe(result_df)
-
-csv = result_df.to_csv(index=False).encode("utf-8")
-st.download_button(
-    label="⬇️ Download Full Report (CSV)",
-    data=csv,
-    file_name=f"{selected_product}_completeness_report.csv",
-    mime="text/csv"
-)
-
-# ---------------- STEP 5: Ask for Exception Analysis ----------------
-st.markdown("---")
-st.subheader("Next Step")
-
-if "show_exceptions" not in st.session_state:
-    choice = st.radio(
-        "Would you like to investigate top 10 accounts with exceptions?",
-        ["No", "Yes"],
-        horizontal=True,
-        key="investigate_choice"
-    )
-    if choice == "Yes":
-        st.session_state["show_exceptions"] = True
+    if not any("Please choose one of the following products" in m["content"] for m in st.session_state.messages):
+        add_assistant_message("📦 Please choose one of the following products:")
+        add_assistant_message(", ".join(product_list[:10]) + " ...")
         st.rerun()
-    else:
-        st.info("You can restart anytime to choose a different control or product.")
-        st.stop()
 
-# ---------------- EXCEPTION ANALYSIS ----------------
-st.subheader("🔍 Investigate Exceptions")
-issue_type = st.radio(
-    "Select the issue type to explore:",
-    ["Service No Bill", "Bill No Service"],
-    horizontal=True
-)
-filtered = result_df[result_df["KPI"] == issue_type]
+    user_input = st.chat_input("Type product name from the list above")
+    if user_input:
+        add_user_message(user_input)
+        product = user_input.strip()
+        if product not in product_list:
+            add_assistant_message("❌ That product wasn’t found. Please type an exact name from the list above.")
+        else:
+            st.session_state.product = product
+            add_assistant_message(f"✅ Got it! You’ve selected **{product}**.")
+            add_assistant_message(f"Would you like me to proceed with the **{st.session_state.control_type}** control for **{product}**? (yes/no)")
+            st.session_state.stage = "confirm"
+        st.rerun()
 
-if len(filtered) == 0:
-    st.warning(f"No records found for **{issue_type}** issues.")
-else:
-    detailed_view = filtered[[
-        "siebel_account_id",
+elif st.session_state.stage == "confirm":
+    user_input = st.chat_input("Type 'yes' to confirm or 'no' to restart")
+    if user_input:
+        add_user_message(user_input)
+        if user_input.lower() == "yes":
+            add_assistant_message("🚀 Perfect! Let’s run the report...")
+            st.session_state.confirmed = True
+            st.session_state.stage = "run_report"
+        else:
+            add_assistant_message("🔁 No problem, restarting setup...")
+            reset_chat()
+        st.rerun()
+
+elif st.session_state.stage == "run_report":
+    add_assistant_message(f"Running **{st.session_state.control_type}** control for **{st.session_state.product}**... please wait ⏳")
+
+    selected_product = st.session_state.product
+
+    # -------- Fetch Data --------
+    accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_accounts`")
+    assets = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_assets`")
+    orders = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_orders`")
+    billing_accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.gibantillia.billing_accounts`")
+    billing_products = bq_agent.execute(f"""
+        SELECT * FROM `telecom-data-lake.gibantillia.billing_products`
+        WHERE product_name = '{selected_product}'
+    """)
+
+    # -------- Rename + Clean --------
+    if 'account_id' in accounts.columns:
+        accounts = accounts.rename(columns={"account_id": "siebel_account_id"})
+    if 'account_id' in assets.columns:
+        assets = assets.rename(columns={"account_id": "siebel_asset_account_id"})
+        if 'service_number' in assets.columns:
+            assets = assets.rename(columns={"service_number": "siebel_service_number"})
+    if 'account_id' in orders.columns:
+        orders = orders.rename(columns={"account_id": "siebel_order_account_id"})
+    if 'account_id' in billing_accounts.columns:
+        billing_accounts = billing_accounts.rename(columns={
+            "account_id": "billing_account_siebel_account_id",
+            "billing_account_id": "billing_account_id_bacc",
+            "status": "billing_account_status"
+        })
+        if 'service_number' in billing_accounts.columns:
+            billing_accounts = billing_accounts.rename(columns={"service_number": "billing_service_number"})
+    if 'billing_account_id' in billing_products.columns:
+        billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
+
+    # -------- Merge Logic --------
+    merged = (
+        billing_products.merge(
+            billing_accounts, left_on="billing_account_id_bp", right_on="billing_account_id_bacc", how="left"
+        )
+        .merge(
+            accounts, left_on="billing_account_siebel_account_id", right_on="siebel_account_id", how="left"
+        )
+        .merge(
+            assets, left_on=["asset_id", "billing_service_number"], right_on=["asset_id", "siebel_service_number"], how="left"
+        )
+        .merge(
+            orders,
+            left_on=["asset_id", "siebel_account_id"],
+            right_on=["asset_id", "siebel_order_account_id"],
+            how="left",
+            suffixes=("", "_order")
+        )
+    )
+    merged = merged.loc[:, ~merged.columns.duplicated()]
+    for col in ["billing_service_number", "siebel_service_number"]:
+        if col in merged.columns:
+            merged[col] = merged[col].astype(str).str.replace(",", "", regex=False)
+
+    # -------- KPIs --------
+    merged["service_no_bill"] = (
+        (merged.get("asset_status", "") == "Active") &
+        (merged.get("billing_account_status", "") != "Active")
+    )
+    merged["no_service_bill"] = (
+        (merged.get("asset_status", "") != "Active") &
+        (merged.get("billing_account_status", "") == "Active")
+    )
+
+    def classify_kpi(row):
+        if row.get("asset_status") == "Active" and row.get("billing_account_status") == "Active":
+            return "Happy Path"
+        elif row.get("service_no_bill"):
+            return "Service No Bill"
+        elif row.get("no_service_bill"):
+            return "Bill No Service"
+        else:
+            return "DI Issue"
+
+    merged["KPI"] = merged.apply(classify_kpi, axis=1)
+
+    result_df = merged[[
         "billing_service_number",
         "siebel_service_number",
+        "siebel_account_id",
+        "asset_id",
+        "product_name",
         "asset_status",
         "billing_account_status",
-        "product_name",
-        "KPI"
-    ]]
-    st.markdown(f"### 📋 Detailed {issue_type} Records (Top 10)")
-    st.dataframe(detailed_view.head(10))
+        "KPI",
+        "service_no_bill",
+        "no_service_bill"
+    ]].drop_duplicates()
 
-    top_accounts = (
-        filtered.groupby(["siebel_account_id", "billing_service_number"])
-        .size()
-        .reset_index(name="exception_count")
-        .sort_values("exception_count", ascending=False)
-        .head(10)
-    )
-    #st.markdown(f"### 📊 Top 10 Accounts + Service Numbers with Most **{issue_type}** Exceptions")
-    #st.dataframe(top_accounts)
+    # -------- Summary --------
+    total = len(result_df)
+    happy = (result_df["KPI"] == "Happy Path").sum()
+    s_nb = (result_df["KPI"] == "Service No Bill").sum()
+    n_sb = (result_df["KPI"] == "Bill No Service").sum()
+    completeness_pct = round((happy / total) * 100, 2) if total > 0 else 0.0
 
-    issue_csv = filtered.to_csv(index=False).encode("utf-8")
+    add_assistant_message(f"""
+📊 **Completeness Summary**
+
+- 🧾 Total Records: {total:,}
+- ✅ Happy Path: {happy:,}
+- ⚠️ Service No Bill: {s_nb:,}
+- 🚫 Bill No Service: {n_sb:,}
+- 📈 Completeness: {completeness_pct}%
+    """)
+    st.dataframe(result_df)
+
+    csv = result_df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label=f"⬇️ Download {issue_type} Records",
-        data=issue_csv,
-        file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
+        "⬇️ Download Full Report (CSV)",
+        data=csv,
+        file_name=f"{selected_product}_completeness_report.csv",
         mime="text/csv"
     )
+
+    add_assistant_message("Would you like to see the **top 10 accounts with exceptions**? (yes/no)")
+    st.session_state.stage = "ask_exceptions"
+    st.session_state.result_df = result_df
+    st.rerun()
+
+elif st.session_state.stage == "ask_exceptions":
+    user_input = st.chat_input("Type 'yes' or 'no'")
+    if user_input:
+        add_user_message(user_input)
+        if user_input.lower() == "yes":
+            st.session_state.show_exceptions = True
+            st.session_state.stage = "show_exceptions"
+        else:
+            add_assistant_message("👍 No problem. You can restart anytime.")
+        st.rerun()
+
+elif st.session_state.stage == "show_exceptions":
+    result_df = st.session_state.result_df
+    issue_type = st.radio("Select issue type", ["Service No Bill", "Bill No Service"], horizontal=True)
+    filtered = result_df[result_df["KPI"] == issue_type]
+
+    if len(filtered) == 0:
+        add_assistant_message(f"No records found for **{issue_type}** issues.")
+    else:
+        st.markdown(f"### 📋 Top 10 {issue_type} Records")
+        st.dataframe(filtered.head(10))
+
+        issue_csv = filtered.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            f"⬇️ Download {issue_type} Records",
+            data=issue_csv,
+            file_name=f"{st.session_state.product}_{issue_type.replace(' ', '_').lower()}_records.csv",
+            mime="text/csv"
+        )
+
+    st.stop()
