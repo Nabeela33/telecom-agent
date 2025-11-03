@@ -21,11 +21,13 @@ def reset_session():
 
 @st.cache_data(ttl=600)
 def cached_query(query):
+    """Cache standard BigQuery queries."""
     return bq_agent.execute(query)
 
 @st.cache_data(ttl=600)
-def cached_query_with_config(query, job_config):
-    return bq_agent.execute_with_config(query, job_config)
+def cached_query_with_config(query, _job_config):
+    """Cache parameterized BigQuery queries (ignore job_config in hash)."""
+    return bq_agent.execute_with_config(query, _job_config)
 
 # ---------------- INIT ----------------
 siebel_mapping = load_mapping(BUCKET_NAME, "siebel_mapping.txt")
@@ -209,6 +211,7 @@ else:
         data=issue_csv,
         file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
         mime="text/csv")
+
 # ---------------- FINAL: Restart Option ----------------
 st.markdown("---")
 st.subheader("🔁 Run Another Control")
