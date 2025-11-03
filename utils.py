@@ -1,7 +1,7 @@
 from google.cloud import storage
 
 def load_mapping(bucket_name: str, file_name: str) -> str:
-    """Loads text mapping file from GCS."""
+    """Load text mapping file from GCS."""
     if "/" in bucket_name:
         bucket_name, prefix = bucket_name.split("/", 1)
         blob_name = f"{prefix}/{file_name}"
