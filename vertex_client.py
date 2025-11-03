@@ -1,17 +1,16 @@
 from vertexai import init
 from vertexai.generative_models import GenerativeModel
+import time
 
 class VertexAgent:
     def __init__(self, project_id: str, region: str):
         init(project=project_id, location=region)
-        self.model = GenerativeModel("gemini-2.5-flash")  # No endpoint needed
+        self.model = GenerativeModel("gemini-2.5-flash")
 
     def prompt_to_sql(self, user_prompt: str, siebel_mapping: str, antillia_mapping: str) -> str:
         system_instruction = (
-            "You are an expert data analyst who writes correct and optimized BigQuery SQL queries. "
-            "Use the provided mappings between business terms and actual BigQuery tables/columns. "
-            "Infer which system the user is referring to (Siebel or Antillia) from context and mapping file name. "
-            "Always format output as a valid SQL query only — no explanations or markdown."
+            "You are an expert data analyst who writes optimized BigQuery SQL. "
+            "Use the provided mappings to interpret business terms and produce only SQL output."
         )
 
         prompt = f"""
@@ -27,5 +26,10 @@ class VertexAgent:
         {user_prompt}
         """
 
-        response = self.model.generate_content(prompt)
-        return response.text.strip()
+        for _ in range(3):
+            try:
+                response = self.model.generate_content(prompt)
+                return response.text.strip()
+            except Exception:
+                time.sleep(2)
+        raise RuntimeError("Vertex AI SQL generation failed after retries.")
