@@ -215,7 +215,7 @@ st.download_button(
 st.markdown("---")
 st.subheader("🔁 Start Over")
 
-if st.button("🏠 Back to Step 1 (Choose Control Type)"):
+if st.button("🏠 Back to Step 1 (Choose Control Type)", key="restart_top"):
     reset_session()
     st.rerun()
 # ---------------- STEP 5: Ask for Exception Analysis ----------------
@@ -280,6 +280,6 @@ else:
 st.markdown("---")
 st.subheader("🔁 Start Over")
 
-if st.button("🏠 Back to Step 1 (Choose Control Type)"):
+if st.button("🏠 Back to Step 1 (Choose Control Type)", key="restart_bottom"):
     reset_session()
     st.rerun()
