@@ -211,7 +211,13 @@ st.download_button(
     file_name=f"{selected_product}_completeness_report.csv",
     mime="text/csv"
 )
+# ---------------- Restart Option ----------------
+st.markdown("---")
+st.subheader("🔁 Start Over")
 
+if st.button("🏠 Back to Step 1 (Choose Control Type)"):
+    reset_session()
+    st.rerun()
 # ---------------- STEP 5: Ask for Exception Analysis ----------------
 st.markdown("---")
 st.subheader("Next Step")
