@@ -213,9 +213,9 @@ st.download_button(
 )
 # ---------------- Restart Option ----------------
 st.markdown("---")
-st.subheader("🔁 Start Over")
+st.subheader("🔁 Want to Start Over?")
 
-if st.button("🏠 Back to Step 1 (Choose Control Type)", key="restart_top"):
+if st.button("🏠 Choose Control Type)", key="restart_top"):
     reset_session()
     st.rerun()
 # ---------------- STEP 5: Ask for Exception Analysis ----------------
