@@ -142,21 +142,30 @@ for col in ["billing_service_number", "siebel_service_number"]:
         merged[col] = merged[col].astype(str).str.replace(",", "", regex=False)
 
 # ---------------- KPIs ----------------
+def is_available(status):
+    """Treat both Active and Completed as available statuses."""
+    if pd.isna(status):
+        return False
+    return str(status).strip().lower() in ["active", "completed", "complete"]
+
 merged["service_no_bill"] = (
-    (merged.get("asset_status", "") == "Active") &
-    (merged.get("billing_account_status", "") != "Active")
+    merged["asset_status"].apply(is_available)
+    & ~merged["billing_account_status"].apply(is_available)
 )
+
 merged["no_service_bill"] = (
-    (merged.get("asset_status", "") != "Active") &
-    (merged.get("billing_account_status", "") == "Active")
+    ~merged["asset_status"].apply(is_available)
+    & merged["billing_account_status"].apply(is_available)
 )
 
 def classify_kpi(row):
-    if row.get("asset_status") == "Active" and row.get("billing_account_status") == "Active":
+    asset_ok = is_available(row.get("asset_status"))
+    billing_ok = is_available(row.get("billing_account_status"))
+    if asset_ok and billing_ok:
         return "Happy Path"
-    elif row.get("service_no_bill"):
+    elif asset_ok and not billing_ok:
         return "Service No Bill"
-    elif row.get("no_service_bill"):
+    elif not asset_ok and billing_ok:
         return "Bill No Service"
     else:
         return "DI Issue"
