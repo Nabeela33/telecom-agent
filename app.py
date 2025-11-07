@@ -245,7 +245,7 @@ elif control_type == "Accuracy":
             return "Insufficient Data"
         diff = b - a
         if abs(diff) <= ABS_TOL:
-            return "Accurate (Happy Path)"
+            return "Happy Path"
         elif diff > 0:
             return "Over Billing"
         else:
@@ -255,7 +255,7 @@ elif control_type == "Accuracy":
     happy_df["diff_amount"] = happy_df["billing_amount"] - happy_df["asset_amount"]
 
     total = len(happy_df)
-    accurate = (happy_df["Accuracy_KPI"] == "Accurate (Happy Path)").sum()
+    accurate = (happy_df["Accuracy_KPI"] == "Happy Path").sum()
     overb = (happy_df["Accuracy_KPI"] == "Over Billing").sum()
     underb = (happy_df["Accuracy_KPI"] == "Under Billing").sum()
     insuff = (happy_df["Accuracy_KPI"] == "Insufficient Data").sum()
