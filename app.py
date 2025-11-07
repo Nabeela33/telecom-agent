@@ -34,7 +34,10 @@ def reset_session():
 # ---------------- STEP 1: Select Control Type ----------------
 if "control_type" not in st.session_state:
     st.subheader("🧩 Step 1: Choose Control Type")
-    control_type = st.selectbox("Which data quality control would you like to run?", ["Completeness"])
+    control_type = st.selectbox(
+        "Which data quality control would you like to run?",
+        ["Completeness", "Accuracy"]
+    )
     if st.button("Next ➡️"):
         st.session_state["control_type"] = control_type
         st.rerun()
@@ -74,10 +77,11 @@ if "confirmed" not in st.session_state:
             st.rerun()
     st.stop()
 
-# ---------------- STEP 4: Run Completeness Report ----------------
-st.success(f"🚀 Running {st.session_state['control_type']} control for **{st.session_state['selected_product']}**...")
-
+# ---------------- STEP 4: Run Report ----------------
 selected_product = st.session_state["selected_product"]
+control_type = st.session_state["control_type"]
+
+st.success(f"🚀 Running {control_type} control for **{selected_product}**...")
 
 # ---------------- FETCH DATA ----------------
 accounts = bq_agent.execute("SELECT * FROM `telecom-data-lake.o_siebel.siebel_accounts`")
@@ -141,7 +145,7 @@ for col in ["billing_service_number", "siebel_service_number"]:
     if col in merged.columns:
         merged[col] = merged[col].astype(str).str.replace(",", "", regex=False)
 
-# ---------------- KPIs ----------------
+# ---------------- COMPLETENESS LOGIC ----------------
 def is_available(status):
     """Treat both Active and Completed as available statuses."""
     if pd.isna(status):
@@ -172,123 +176,132 @@ def classify_kpi(row):
 
 merged["KPI"] = merged.apply(classify_kpi, axis=1)
 
-result_df = merged[[
-    "billing_service_number",
-    "siebel_service_number",
-    "siebel_account_id",
-    "asset_id",
-    "product_name",
-    "asset_status",
-    "billing_account_status",
-    "KPI",
-    "service_no_bill",
-    "no_service_bill"
-]].drop_duplicates()
+# ---------------------------------------------------------------------
+# CONTROL BRANCHING
+# ---------------------------------------------------------------------
+if control_type == "Completeness":
+    st.subheader("🧩 Completeness Summary")
 
-# ---------------- KPI SUMMARY ----------------
-st.subheader("🧩 Completeness Summary")
-
-total = len(result_df)
-happy_path = (result_df["KPI"] == "Happy Path").sum()
-service_no_bill = (result_df["KPI"] == "Service No Bill").sum()
-no_service_bill = (result_df["KPI"] == "Bill No Service").sum()
-
-completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
-
-c1, c2 = st.columns(2)
-with c1:
-    st.metric("🧾 Total Records", f"{total:,}")
-with c2:
-    st.metric("📈 Happy Path (%)", f"{completeness_pct} %")
-
-c3, c4, c5 = st.columns(3)
-with c3:
-    st.metric("✅ Happy Path", f"{happy_path:,}")
-with c4:
-    st.metric("⚠️ Service No Bill", f"{service_no_bill:,}")
-with c5:
-    st.metric("🚫 Bill No Service", f"{no_service_bill:,}")
-
-# ---------------- DETAILED REPORT ----------------
-st.subheader("📋 Completeness Report Details")
-st.dataframe(result_df)
-
-csv = result_df.to_csv(index=False).encode("utf-8")
-st.download_button(
-    label="⬇️ Download Full Report (CSV)",
-    data=csv,
-    file_name=f"{selected_product}_completeness_report.csv",
-    mime="text/csv"
-)
-# ---------------- Restart Option ----------------
-st.markdown("---")
-st.subheader("🔁 Want to Start Over?")
-
-if st.button("🏠 Choose Control Type)", key="restart_top"):
-    reset_session()
-    st.rerun()
-# ---------------- STEP 5: Ask for Exception Analysis ----------------
-st.markdown("---")
-st.subheader("Next Step")
-
-if "show_exceptions" not in st.session_state:
-    choice = st.radio(
-        "Would you like to investigate top 10 accounts with exceptions?",
-        ["No", "Yes"],
-        horizontal=True,
-        key="investigate_choice"
-    )
-    if choice == "Yes":
-        st.session_state["show_exceptions"] = True
-        st.rerun()
-    else:
-        st.info("You can restart anytime to choose a different control or product.")
-        st.stop()
-
-# ---------------- EXCEPTION ANALYSIS ----------------
-st.subheader("🔍 Investigate Exceptions")
-issue_type = st.radio(
-    "Select the issue type to explore:",
-    ["Service No Bill", "Bill No Service"],
-    horizontal=True
-)
-filtered = result_df[result_df["KPI"] == issue_type]
-
-if len(filtered) == 0:
-    st.warning(f"No records found for **{issue_type}** issues.")
-else:
-    detailed_view = filtered[[
-        "siebel_account_id",
+    result_df = merged[[
         "billing_service_number",
         "siebel_service_number",
+        "siebel_account_id",
+        "asset_id",
+        "product_name",
         "asset_status",
         "billing_account_status",
-        "product_name",
-        "KPI"
-    ]]
-    st.markdown(f"### 📋 Detailed {issue_type} Records (Top 10)")
-    st.dataframe(detailed_view.head(10))
+        "KPI",
+        "service_no_bill",
+        "no_service_bill"
+    ]].drop_duplicates()
 
-    top_accounts = (
-        filtered.groupby(["siebel_account_id", "billing_service_number"])
-        .size()
-        .reset_index(name="exception_count")
-        .sort_values("exception_count", ascending=False)
-        .head(10)
-    )
+    total = len(result_df)
+    happy_path = (result_df["KPI"] == "Happy Path").sum()
+    service_no_bill = (result_df["KPI"] == "Service No Bill").sum()
+    no_service_bill = (result_df["KPI"] == "Bill No Service").sum()
 
-    issue_csv = filtered.to_csv(index=False).encode("utf-8")
+    completeness_pct = round((happy_path / total) * 100, 2) if total > 0 else 0.0
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("🧾 Total Records", f"{total:,}")
+    with c2:
+        st.metric("📈 Happy Path (%)", f"{completeness_pct} %")
+
+    c3, c4, c5 = st.columns(3)
+    with c3:
+        st.metric("✅ Happy Path", f"{happy_path:,}")
+    with c4:
+        st.metric("⚠️ Service No Bill", f"{service_no_bill:,}")
+    with c5:
+        st.metric("🚫 Bill No Service", f"{no_service_bill:,}")
+
+    st.subheader("📋 Completeness Report Details")
+    st.dataframe(result_df)
+
+    csv = result_df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label=f"⬇️ Download {issue_type} Records",
-        data=issue_csv,
-        file_name=f"{selected_product}_{issue_type.replace(' ', '_').lower()}_records.csv",
+        label="⬇️ Download Full Report (CSV)",
+        data=csv,
+        file_name=f"{selected_product}_completeness_report.csv",
         mime="text/csv"
     )
 
-# ---------------- FINAL: Restart Option ----------------
+elif control_type == "Accuracy":
+    # ---------------- ACCURACY LOGIC ----------------
+    st.subheader("🎯 Accuracy Summary (on Completeness Happy Path)")
+    happy_df = merged[merged["KPI"] == "Happy Path"].copy()
+
+    for col in ["asset_amount", "billing_amount"]:
+        if col in happy_df.columns:
+            happy_df[col] = pd.to_numeric(happy_df[col], errors="coerce")
+
+    ABS_TOL = 0.01
+
+    def classify_accuracy(row):
+        a = row.get("asset_amount")
+        b = row.get("billing_amount")
+        if pd.isna(a) or pd.isna(b):
+            return "Insufficient Data"
+        diff = b - a
+        if abs(diff) <= ABS_TOL:
+            return "Accurate (Happy Path)"
+        elif diff > 0:
+            return "Over Billing"
+        else:
+            return "Under Billing"
+
+    happy_df["Accuracy_KPI"] = happy_df.apply(classify_accuracy, axis=1)
+    happy_df["diff_amount"] = happy_df["billing_amount"] - happy_df["asset_amount"]
+
+    total = len(happy_df)
+    accurate = (happy_df["Accuracy_KPI"] == "Accurate (Happy Path)").sum()
+    overb = (happy_df["Accuracy_KPI"] == "Over Billing").sum()
+    underb = (happy_df["Accuracy_KPI"] == "Under Billing").sum()
+    insuff = (happy_df["Accuracy_KPI"] == "Insufficient Data").sum()
+
+    accuracy_pct = round((accurate / total) * 100, 2) if total > 0 else 0.0
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("🧾 Happy Path Records", f"{total:,}")
+    with c2:
+        st.metric("✅ Accurate (%)", f"{accuracy_pct} %")
+
+    c3, c4, c5, c6 = st.columns(4)
+    with c3:
+        st.metric("✅ Accurate", f"{accurate:,}")
+    with c4:
+        st.metric("⬆️ Over Billing", f"{overb:,}")
+    with c5:
+        st.metric("⬇️ Under Billing", f"{underb:,}")
+    with c6:
+        st.metric("❓ Insufficient Data", f"{insuff:,}")
+
+    st.subheader("📋 Accuracy Details")
+    st.dataframe(happy_df[[
+        "siebel_account_id",
+        "billing_service_number",
+        "siebel_service_number",
+        "asset_amount",
+        "billing_amount",
+        "diff_amount",
+        "product_name",
+        "Accuracy_KPI"
+    ]])
+
+    csv = happy_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="⬇️ Download Accuracy Report (CSV)",
+        data=csv,
+        file_name=f"{selected_product}_accuracy_report.csv",
+        mime="text/csv"
+    )
+
+# ---------------- FINAL RESTART OPTION ----------------
 st.markdown("---")
 st.subheader("🔁 Start Over")
 
-if st.button("🏠 Back to Step 1 (Choose Control Type)", key="restart_bottom"):
+if st.button("🏠 Back to Step 1 (Choose Control Type)"):
     reset_session()
     st.rerun()
