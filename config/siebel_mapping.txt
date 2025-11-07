@@ -1,1 +1,111 @@
 
+TELECOM DATASET MAPPING AND JOIN LOGIC
+--------------------------------------
+
+This document describes how to join the three datasets: accounts, assets, and orders.
+
+accounts = telecom-data-lake.o_siebel.siebel_accounts
+assets = telecom-data-lake.o_siebel.siebel_assets
+orders = telecom-data-lake.o_siebel.siebel_orders
+
+==========================
+1. telecom-data-lake.o_siebel.siebel_accounts
+==========================
+Primary Key: account_id
+
+Columns:
+- account_id: Unique identifier for each account.
+- account_name: Name of the customer/company.
+- account_type: Type of account (Enterprise, SME, Retail).
+- region: Geographic region of the account.
+- created_date: Date when the account was created.
+- status: Account status (Active/Inactive).
+- contact_email: Primary email address of the account.
+- contact_phone: Phone number for contact.
+
+==========================
+2. telecom-data-lake.o_siebel.siebel_assets
+==========================
+Primary Key: asset_id
+Foreign Key: account_id → accounts.account_id
+
+Columns:
+- asset_id: Unique identifier for each telecom asset.
+- account_id: The account that owns or manages the asset.
+- asset_type: Type of telecom asset (Tower, Router, etc.).
+- installation_date: Date the asset was installed.
+- asset_status: Asset status (Active/Inactive).
+- location: City/location of the asset.
+- maintenance_cost: Cost of maintaining the asset (£).
+- service_number: Service number or a Telephone Number.
+- asset_amount: asset amount
+
+==========================
+3. telecom-data-lake.o_siebel.siebel_orders
+==========================
+Primary Key: order_id
+Foreign Keys:
+  - account_id → accounts.account_id
+  - asset_id → assets.asset_id
+
+Columns:
+- order_id: Unique order identifier.
+- account_id: Account placing the order.
+- asset_id: Related asset for which the order applies.
+- order_date: Date when the order was created.
+- order_type: Order category (New Installation, Upgrade, Repair, Decommission).
+- quantity: Quantity of items/services ordered.
+- unit_price: Price per unit (£).
+- order_status: Status of the order (Completed, Pending, Cancelled).
+- total_price: Calculated as quantity * unit_price (£).
+
+==========================
+4. JOIN LOGIC
+==========================
+
+A. Join ACCOUNTS with ASSETS:
+   SQL Example:
+       SELECT *
+       FROM `telecom-data-lake.o_siebel.siebel_assets` a
+       INNER JOIN `telecom-data-lake.o_siebel.siebel_accounts` acc
+           ON a.account_id = acc.account_id;
+
+   Purpose:
+       To associate each telecom asset with the account that owns it.
+
+B. Join ASSETS with ORDERS:
+   SQL Example:
+       SELECT *
+       FROM `telecom-data-lake.o_siebel.siebel_orders` o
+       INNER JOIN `telecom-data-lake.o_siebel.siebel_assets` a
+           ON o.asset_id = a.asset_id;
+
+   Purpose:
+       To connect orders to the specific assets they reference.
+
+C. Join ALL THREE TABLES:
+   SQL Example:
+       SELECT *
+       FROM `telecom-data-lake.o_siebel.siebel_orders` o
+       INNER JOIN `telecom-data-lake.o_siebel.siebel_assets` a
+           ON o.asset_id = a.asset_id
+       INNER JOIN `telecom-data-lake.o_siebel.siebel_accounts` acc
+           ON o.account_id = acc.account_id;
+
+   Purpose:
+       To produce a unified dataset showing which account placed which order for which asset.
+
+==========================
+5. RELATIONAL MODEL SUMMARY
+==========================
+- One Account → Many Assets
+- One Account → Many Orders
+- One Asset → Many Orders
+- Orders link both Account and Asset entities.
+
+==========================
+6. RECOMMENDATIONS
+==========================
+- Use account_id as the primary key in ACCOUNTS and foreign key in other tables.
+- Use asset_id as the primary key in ASSETS and foreign key in ORDERS.
+- Ensure referential integrity by validating that each foreign key value exists in the parent table.
