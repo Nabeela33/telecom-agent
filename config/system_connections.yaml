@@ -1,1 +1,19 @@
+systems:
+  Siebel:
+    dataset: "telecom-data-lake.o_siebel"
+    tables:
+      - "siebel_accounts"
+      - "siebel_assets"
+      - "siebel_orders"
 
+  Antillia:
+    dataset: "telecom-data-lake.gibantillia"
+    tables:
+      - "billing_accounts"
+      - "billing_products"
+
+  Cosmos:
+    dataset: "telecom-data-lake.cosmos"
+    tables:
+      - "cosmos_accounts"
+      - "cosmos_assets"
