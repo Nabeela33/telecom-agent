@@ -1,13 +1,78 @@
 controls:
   Completeness:
-    Broadband:
+    Broadband Basic:
       systems: ["Siebel", "Antillia"]
       mappings:
         - "siebel_mapping.txt"
         - "antillia_mapping.txt"
 
   Accuracy:
-    Broadband:
+    Broadband Basic:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+  Completeness:
+    Home WiFi Plus:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+
+  Accuracy:
+    Home WiFi Plus:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+  Completeness:
+    Mobile Pro:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+
+  Accuracy:
+    Mobile Pro:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+  Completeness:
+    Fiber Max:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+
+  Accuracy:
+    Fiber Max:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+  Completeness:
+    5G Ultra:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+
+  Accuracy:
+    5G Ultra:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+  Completeness:
+    Business Line:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
+
+  Accuracy:
+    Business Line:
       systems: ["Siebel", "Antillia"]
       mappings:
         - "siebel_mapping.txt"
