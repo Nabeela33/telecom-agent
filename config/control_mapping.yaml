@@ -1,1 +1,14 @@
+controls:
+  Completeness:
+    Broadband:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
 
+  Accuracy:
+    Broadband:
+      systems: ["Siebel", "Antillia"]
+      mappings:
+        - "siebel_mapping.txt"
+        - "antillia_mapping.txt"
