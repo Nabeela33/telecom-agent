@@ -1,18 +1,19 @@
 import yaml
 from google.cloud import storage
 
-def load_mapping(bucket_name: str, file_name: str) -> str:
-    if "/" in bucket_name:
-        bucket_name, prefix = bucket_name.split("/", 1)
-        blob_name = f"{prefix}/{file_name}"
+def load_mapping(bucket_name: str, file_path: str) -> str:
+    """Load mapping text file either from GCS or locally."""
+    if bucket_name:
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(file_path)
+        return blob.download_as_text()
     else:
-        blob_name = file_name
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    return blob.download_as_text()
+        with open(file_path, "r") as f:
+            return f.read()
 
 def load_yaml_config(bucket_name, file_path):
+    """Load YAML config from GCS or local filesystem."""
     if bucket_name:
         client = storage.Client()
         bucket = client.bucket(bucket_name)
