@@ -10,7 +10,7 @@ from controls.accuracy import run_accuracy
 # ---------------- CONFIG ----------------
 PROJECT_ID = "telecom-data-lake"
 REGION = "europe-west2"
-BUCKET_NAME = "stage_data1/Mapping files"
+BUCKET_NAME = None  # Config files are local
 CONTROL_MAPPING_FILE = "config/control_mapping.yaml"
 SYSTEM_CONNECTIONS_FILE = "config/system_connections.yaml"
 
@@ -26,7 +26,6 @@ st.markdown("Run data quality controls dynamically using configuration-driven lo
 config_data = load_yaml_config(BUCKET_NAME, CONTROL_MAPPING_FILE)
 
 def reset_session():
-    """Clears all step-related session state keys to restart the workflow."""
     for key in ["control_type", "selected_product", "confirmed"]:
         if key in st.session_state:
             del st.session_state[key]
@@ -43,11 +42,7 @@ if "control_type" not in st.session_state:
 # ---------------- STEP 2: Select Product (Dynamic from BigQuery) ----------------
 if "selected_product" not in st.session_state:
     st.subheader("🛠️ Step 2: Select Product")
-
-    # Fetch product list dynamically from BigQuery
-    product_df = bq_agent.execute(
-        "SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`"
-    )
+    product_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
     product_list = sorted(product_df['product_name'].dropna().tolist())
 
     selected_product = st.selectbox("Please choose a product:", product_list)
@@ -63,7 +58,7 @@ if "selected_product" not in st.session_state:
             st.rerun()
     st.stop()
 
-# ---------------- STEP 3: Load Config for Selected Control ----------------
+# ---------------- STEP 3: Load Config ----------------
 control_type = st.session_state["control_type"]
 selected_product = st.session_state["selected_product"]
 
@@ -81,12 +76,12 @@ st.caption(f"Mapping files: {', '.join(mapping_files)}")
 # ---------------- STEP 4: Load Mappings ----------------
 combined_mapping = ""
 for file in mapping_files:
-    combined_mapping += "\n" + load_mapping(BUCKET_NAME, file)
+    combined_mapping += "\n" + load_mapping(None, f"config/{file}")
 
-# ---------------- STEP 5: Confirm Selection ----------------
+# ---------------- STEP 5: Confirm ----------------
 if "confirmed" not in st.session_state:
     st.subheader("✅ Step 3: Confirm Selection")
-    st.markdown(f"You've chosen to run **{control_type}** control for product **{selected_product}**.")
+    st.markdown(f"You've chosen to run **{control_type}** for product **{selected_product}**.")
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔁 Start Over"):
@@ -98,33 +93,29 @@ if "confirmed" not in st.session_state:
             st.rerun()
     st.stop()
 
-# ---------------- STEP 6: Fetch System Data Dynamically ----------------
-st.success(f"🚀 Running {control_type} control for **{selected_product}**...")
-system_dfs = fetch_system_data(PROJECT_ID, BUCKET_NAME, SYSTEM_CONNECTIONS_FILE, systems)
+# ---------------- STEP 6: Fetch Data Dynamically ----------------
+st.success(f"🚀 Running {control_type} for **{selected_product}**...")
+system_dfs = fetch_system_data(PROJECT_ID, systems)
 
-# Combine data from available systems
-billing_products = system_dfs.get("antillia_billing_products", pd.DataFrame())
-billing_accounts = system_dfs.get("antillia_billing_accounts", pd.DataFrame())
-accounts = system_dfs.get("siebel_siebel_accounts", pd.DataFrame())
-assets = system_dfs.get("siebel_siebel_assets", pd.DataFrame())
-orders = system_dfs.get("siebel_siebel_orders", pd.DataFrame())
-
-merged = billing_products.copy()
-for df in [billing_accounts, accounts, assets, orders]:
-    if not df.empty:
-        merged = pd.merge(merged, df, how="left", left_index=True, right_index=True)
-
-merged = merged.loc[:, ~merged.columns.duplicated()]
-
-# ---------------- STEP 7: Run Selected Control ----------------
+# ---------------- STEP 7: Execute Control Logic ----------------
 if control_type == "Completeness":
-    merged, result_df = run_completeness(merged, selected_product)
+    merged, result_df = run_completeness(system_dfs, selected_product)
 elif control_type == "Accuracy":
-    run_accuracy(merged, selected_product)
+    merged, result_df = run_accuracy(system_dfs, selected_product)
 
-# ---------------- FINAL: Restart Option ----------------
+# ---------------- STEP 8: Display Output ----------------
+st.subheader("📊 Results Summary")
+st.dataframe(result_df)
+
+csv = result_df.to_csv(index=False).encode("utf-8")
+st.download_button(
+    label="⬇️ Download Report (CSV)",
+    data=csv,
+    file_name=f"{selected_product}_{control_type.lower()}_report.csv",
+    mime="text/csv"
+)
+
 st.markdown("---")
-st.subheader("🔁 Restart")
-if st.button("🏠 Back to Step 1"):
+if st.button("🏠 Restart"):
     reset_session()
     st.rerun()
