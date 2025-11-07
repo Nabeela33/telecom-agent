@@ -1,1 +1,81 @@
 
+Antillia BILLING DATASET MAPPING AND JOIN LOGIC
+--------------------------------------
+
+This document explains how to connect the billing datasets with the previously created telecom data.
+
+billing_accounts = telecom-data-lake.gibantillia.billing_accounts
+billing_products = telecom-data-lake.gibantillia.billing_products
+==========================
+1. telecom-data-lake.gibantillia.billing_accounts
+==========================
+Primary Key: billing_account_id
+Foreign Key: account_id → accounts.account_id
+
+Columns:
+- billing_account_id: Unique identifier for the billing account.
+- account_id: Reference to the related customer account.
+- billing_address: Full address used for billing purposes.
+- payment_method: Method of payment (Direct Debit, Credit Card, Bank Transfer).
+- billing_cycle: Frequency of billing (Monthly / Quarterly).
+- currency: Currency used for billing (£).
+- status: Billing account status (Active / Suspended).
+- created_date: Date the billing account was created.
+- service_number: Service number or Telephone Number
+- billing_amount: billing amount
+==========================
+2. BILLING PRODUCTS TABLE (billing_products.xlsx)
+==========================
+Primary Key: billing_product_id
+Foreign Keys:
+  - billing_account_id → billing_accounts.billing_account_id
+  - asset_id → assets.asset_id
+  - order_id → orders.order_id
+
+Columns:
+- billing_product_id: Unique ID for each billing product or service.
+- billing_account_id: Reference to the billing account responsible for payment.
+- asset_id: The telecom asset being billed.
+- order_id: The order associated with the product or service.
+- product_name: Description of the billed product (e.g., "Fiber Connection 100Mbps").
+- charge_type: Indicates whether charges are Monthly or Quarterly.
+- charge_amount: The recurring billing amount (£).
+- last_billed_date: Date when the product was last billed.
+- next_billing_date: Scheduled date for the next billing cycle.
+- status: Product billing status (Active, Pending, Cancelled).
+
+==========================
+3. JOIN LOGIC
+==========================
+
+A. Join BILLING PRODUCTS with BILLING ACCOUNTS:
+   SQL Example:
+       SELECT *
+       FROM `telecom-data-lake.gibantillia.billing_products` bp
+       INNER JOIN `telecom-data-lake.gibantillia.billing_accounts` bacc
+           ON bp.billing_account_id = bacc.billing_account_id;
+
+   Purpose:
+       To associate billing products with their billing accounts.
+
+
+B. Join ALL Antillia BILLING AND Siebel DATASETS:
+   SQL Example:
+       SELECT *
+       FROM `telecom-data-lake.gibantillia.billing_products` bp
+       INNER JOIN `telecom-data-lake.gibantillia.billing_accounts` bacc
+  	  ON bp.billing_account_id = bacc.billing_account_id
+       LEFT JOIN `telecom-data-lake.o_siebel.siebel_assets` sa
+  	  ON bacc.service_number = sa.service_number;
+
+
+   Purpose:
+       To create a unified siebel and antillia model across customers, assets, and services.
+
+==========================
+4. RELATIONAL MODEL SUMMARY
+==========================
+- One Account → One or Many Billing Accounts
+- One Billing Account → Many Billing Products
+- One Billing Product → One Asset and One Order
+- Billing Products provide recurring revenue linked to both telecom assets and service orders.
