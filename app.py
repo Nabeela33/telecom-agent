@@ -105,13 +105,24 @@ elif control_type == "Accuracy":
 
 # ---------------- STEP 8: Display Output ----------------
 st.subheader("📊 Results Summary")
-st.dataframe(result_df)
+st.dataframe(result_df, use_container_width=True)
 
-csv = result_df.to_csv(index=False).encode("utf-8")
+st.subheader("📋 Detailed Records")
+st.dataframe(merged, use_container_width=True)
+
+summary_csv = result_df.to_csv(index=False).encode("utf-8")
 st.download_button(
-    label="⬇️ Download Report (CSV)",
-    data=csv,
-    file_name=f"{selected_product}_{control_type.lower()}_report.csv",
+    label="⬇️ Download Summary (CSV)",
+    data=summary_csv,
+    file_name=f"{selected_product}_{control_type.lower()}_summary.csv",
+    mime="text/csv"
+)
+
+detail_csv = merged.to_csv(index=False).encode("utf-8")
+st.download_button(
+    label="⬇️ Download Detailed Records (CSV)",
+    data=detail_csv,
+    file_name=f"{selected_product}_{control_type.lower()}_details.csv",
     mime="text/csv"
 )
 
