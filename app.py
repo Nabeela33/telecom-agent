@@ -22,6 +22,58 @@ bq_agent = BigQueryAgent(PROJECT_ID)
 st.title("🛡️ Data Quality Controls")
 st.markdown("Run data quality controls dynamically using configuration-driven logic.")
 
+# ---------------- AI REQUIREMENT INTERPRETER ----------------
+st.markdown("---")
+st.subheader("🤖 AI Requirement Interpreter (Optional)")
+
+uploaded_file = st.file_uploader(
+    "Upload requirement document",
+    type=["txt", "md", "csv"]
+)
+
+requirement_text = st.text_area(
+    "Or paste requirement here",
+    height=120
+)
+
+if uploaded_file:
+    try:
+        requirement_text = uploaded_file.read().decode("utf-8")
+    except:
+        requirement_text = str(uploaded_file.read())
+
+if st.button("🧠 Interpret Requirement with Vertex AI"):
+    if not requirement_text.strip():
+        st.warning("Please upload or paste a requirement.")
+    else:
+        with st.spinner("Vertex AI analyzing requirement..."):
+            try:
+                prompt = f"""
+                You are a telecom data quality expert.
+
+                Read the requirement below and extract:
+
+                - control_type
+                - source_systems
+                - target_systems
+                - join_keys
+                - filters
+                - threshold
+                - business_summary
+
+                Requirement:
+                {requirement_text}
+
+                Return a clear structured explanation.
+                """
+
+                response = vertex_agent.model.generate_content(prompt)
+                st.success("AI Interpretation")
+                st.markdown(response.text)
+
+            except Exception as e:
+                st.error(f"Vertex AI failed: {str(e)}")
+                
 # ---------------- LOAD CONFIG ----------------
 config_data = load_yaml_config(BUCKET_NAME, CONTROL_MAPPING_FILE)
 
