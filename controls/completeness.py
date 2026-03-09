@@ -40,6 +40,10 @@ def run_completeness(system_dfs, selected_product):
         billing_accounts = billing_accounts.rename(columns={"billing_account_id": "billing_account_id_bacc"})
     if "status" in billing_accounts.columns:
         billing_accounts = billing_accounts.rename(columns={"status": "billing_account_status"})
+    if "service_number" in billing_accounts.columns:
+        billing_accounts = billing_accounts.rename(columns={"service_number": "billing_service_number"})
+    if "service_number" in assets.columns:
+        assets = assets.rename(columns={"service_number": "siebel_service_number"})
         
     # --- Merge logic ---
     merged = (
