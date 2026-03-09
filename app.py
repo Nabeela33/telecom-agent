@@ -19,7 +19,7 @@ st.set_page_config(page_title="Data Quality Controls", layout="wide")
 vertex_agent = VertexAgent(PROJECT_ID, REGION)
 bq_agent = BigQueryAgent(PROJECT_ID)
 
-st.title("🛡️ Data Quality Controls Assistant")
+st.title("🛡️ Data Quality Controls")
 st.markdown("Run data quality controls dynamically using configuration-driven logic.")
 
 # ---------------- LOAD CONFIG ----------------
