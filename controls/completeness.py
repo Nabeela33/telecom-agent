@@ -38,7 +38,9 @@ def run_completeness(system_dfs, selected_product):
         billing_products = billing_products.rename(columns={"billing_account_id": "billing_account_id_bp"})
     if "billing_account_id" in billing_accounts.columns:
         billing_accounts = billing_accounts.rename(columns={"billing_account_id": "billing_account_id_bacc"})
-
+    if "status" in billing_accounts.columns:
+        billing_accounts = billing_accounts.rename(columns={"status": "billing_account_status"})
+        
     # --- Merge logic ---
     merged = (
         billing_products.merge(
