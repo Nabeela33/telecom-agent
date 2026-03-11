@@ -35,7 +35,7 @@ def reset_session():
         "ai_interpretation",
         "control_type",
         "selected_product",
-        "confirmed"
+        "confirmed",
     ]:
         if key in st.session_state:
             del st.session_state[key]
@@ -44,11 +44,14 @@ def reset_session():
 def normalize_control_type(value: str) -> str:
     if not value:
         return ""
+
     value = value.strip().lower()
+
     if "complete" in value:
         return "Completeness"
     if "accur" in value:
         return "Accuracy"
+
     return value.title()
 
 
@@ -82,9 +85,13 @@ def read_uploaded_requirement(uploaded_file) -> str:
 
 def load_product_list() -> list:
     product_df = bq_agent.execute(
-        f"SELECT DISTINCT product_name FROM `{PROJECT_ID}.gibantillia.billing_products`"
+        f"""
+        SELECT DISTINCT product_name
+        FROM `{PROJECT_ID}.gibantillia.billing_products`
+        WHERE product_name IS NOT NULL
+        """
     )
-    return sorted(product_df["product_name"].dropna().astype(str).tolist())
+    return sorted(product_df["product_name"].astype(str).tolist())
 
 
 def resolve_product_name(ai_product: str, product_list: list) -> str:
@@ -94,27 +101,28 @@ def resolve_product_name(ai_product: str, product_list: list) -> str:
     ai_product_clean = ai_product.strip()
     ai_product_lower = ai_product_clean.lower()
 
-    # Exact case-insensitive match
     for product in product_list:
         if product.lower() == ai_product_lower:
             return product
 
-    # Containment match
     for product in product_list:
         if ai_product_lower in product.lower() or product.lower() in ai_product_lower:
             return product
 
-    # Fuzzy match
     matches = difflib.get_close_matches(ai_product_clean, product_list, n=1, cutoff=0.6)
     return matches[0] if matches else ""
 
 
 def interpret_requirement(requirement_text: str, product_list: list) -> dict:
+    known_products = product_list[:200]
+
     prompt = f"""
 You are a telecom data quality expert.
 
 Read the requirement below and extract the following fields.
-Return ONLY valid JSON. Do not return markdown. Do not wrap in code fences.
+Return ONLY valid JSON.
+Do not return markdown.
+Do not wrap the answer in code fences.
 
 Required JSON format:
 {{
@@ -128,12 +136,13 @@ Required JSON format:
   "business_summary": "short summary"
 }}
 
-Valid control types are:
-- Completeness
-- Accuracy
+Rules:
+- Allowed control types are only Completeness or Accuracy
+- Pick the product name from the requirement as closely as possible
+- If the requirement is unclear, still return the best possible value
 
 Known product names:
-{product_list[:200]}
+{known_products}
 
 Requirement:
 {requirement_text}
@@ -142,11 +151,9 @@ Requirement:
     response = vertex_agent.model.generate_content(prompt)
     raw_text = response.text.strip()
 
-    # Try plain JSON first
     try:
         parsed = json.loads(raw_text)
     except json.JSONDecodeError:
-        # Recover JSON if model adds extra text
         start = raw_text.find("{")
         end = raw_text.rfind("}")
         if start == -1 or end == -1 or end <= start:
@@ -163,13 +170,13 @@ Requirement:
 if "ai_interpretation" not in st.session_state:
     st.session_state["ai_interpretation"] = None
 
-# ---------------- REQUIREMENT INPUT ----------------
+# ---------------- AI REQUIREMENT INTERPRETER ----------------
 st.markdown("---")
 st.subheader("🤖 AI Requirement Interpreter")
 
 uploaded_file = st.file_uploader(
     "Upload requirement document",
-    type=["txt", "md", "csv", "xlsx"]
+    type=["txt", "md", "csv", "xlsx"],
 )
 
 pasted_text = st.text_area(
@@ -182,51 +189,56 @@ pasted_text = st.text_area(
         "Records active in service must exist in billing.\n"
         "Join on account_id and asset_id.\n"
         "Threshold 98%."
-    )
+    ),
 )
 
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    if st.button("🧠 Interpret Requirement with Vertex AI"):
-        try:
-            uploaded_text = read_uploaded_requirement(uploaded_file) if uploaded_file else ""
-            requirement_text = uploaded_text.strip() if uploaded_text.strip() else pasted_text.strip()
-
-            if not requirement_text:
-                st.warning("Please upload or paste a requirement.")
-                st.stop()
-
-            product_list = load_product_list()
-            interpretation = interpret_requirement(requirement_text, product_list)
-
-            if interpretation.get("control_type") not in ["Completeness", "Accuracy"]:
-                raise ValueError(
-                    f"Unsupported control type returned by AI: {interpretation.get('control_type')}"
-                )
-
-            if not interpretation.get("product_name"):
-                raise ValueError(
-                    "AI could not confidently match the product name with the available product list."
-                )
-
-            st.session_state["requirement_text"] = requirement_text
-            st.session_state["ai_interpretation"] = interpretation
-            st.session_state["control_type"] = interpretation["control_type"]
-            st.session_state["selected_product"] = interpretation["product_name"]
-
-            if "confirmed" in st.session_state:
-                del st.session_state["confirmed"]
-
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Vertex AI interpretation failed: {str(e)}")
+    interpret_clicked = st.button("🧠 Interpret Requirement with Vertex AI")
 
 with col2:
-    if st.button("🔁 Reset"):
-        reset_session()
-        st.rerun()
+    reset_clicked = st.button("🔁 Reset")
+
+if reset_clicked:
+    reset_session()
+    st.rerun()
+
+if interpret_clicked:
+    try:
+        uploaded_text = read_uploaded_requirement(uploaded_file) if uploaded_file else ""
+        requirement_text = uploaded_text.strip() if uploaded_text.strip() else pasted_text.strip()
+
+        if not requirement_text:
+            st.warning("Please upload or paste a requirement.")
+            st.stop()
+
+        product_list = load_product_list()
+        interpretation = interpret_requirement(requirement_text, product_list)
+
+        if interpretation.get("control_type") not in ["Completeness", "Accuracy"]:
+            raise ValueError(
+                f"Unsupported control type returned by AI: {interpretation.get('control_type')}"
+            )
+
+        if not interpretation.get("product_name"):
+            raise ValueError(
+                "AI could not confidently match the product name with the available product list."
+            )
+
+        st.session_state["requirement_text"] = requirement_text
+        st.session_state["ai_interpretation"] = interpretation
+        st.session_state["control_type"] = interpretation["control_type"]
+        st.session_state["selected_product"] = interpretation["product_name"]
+
+        if "confirmed" in st.session_state:
+            del st.session_state["confirmed"]
+
+    except Exception as e:
+        st.error(f"Vertex AI interpretation failed: {str(e)}")
+        st.stop()
+
+    st.rerun()
 
 # ---------------- WAIT FOR AI INTERPRETATION ----------------
 if not st.session_state.get("ai_interpretation"):
@@ -241,6 +253,7 @@ selected_product = st.session_state["selected_product"]
 st.success("AI interpretation completed")
 
 col1, col2 = st.columns(2)
+
 with col1:
     st.markdown(f"**Control Type:** {control_type}")
     st.markdown(f"**Product:** {selected_product}")
@@ -284,15 +297,15 @@ except Exception as e:
 # ---------------- CONFIRM ----------------
 if "confirmed" not in st.session_state:
     st.subheader("✅ Confirm and Run")
-    st.markdown(
-        f"AI selected **{control_type}** for product **{selected_product}**."
-    )
+    st.markdown(f"AI selected **{control_type}** for product **{selected_product}**.")
 
     col1, col2 = st.columns(2)
+
     with col1:
         if st.button("🔁 Start Over"):
             reset_session()
             st.rerun()
+
     with col2:
         if st.button("🚀 Confirm and Run"):
             st.session_state["confirmed"] = True
@@ -333,7 +346,7 @@ st.download_button(
     label="⬇️ Download Summary (CSV)",
     data=summary_csv,
     file_name=f"{selected_product}_{control_type.lower()}_summary.csv",
-    mime="text/csv"
+    mime="text/csv",
 )
 
 detail_csv = merged.to_csv(index=False).encode("utf-8")
@@ -341,7 +354,7 @@ st.download_button(
     label="⬇️ Download Detailed Records (CSV)",
     data=detail_csv,
     file_name=f"{selected_product}_{control_type.lower()}_details.csv",
-    mime="text/csv"
+    mime="text/csv",
 )
 
 st.markdown("---")
