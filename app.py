@@ -10,7 +10,7 @@ from controls.accuracy import run_accuracy
 # ---------------- CONFIG ----------------
 PROJECT_ID = "telecom-data-lake"
 REGION = "europe-west2"
-BUCKET_NAME = None  # Config files are local
+BUCKET_NAME = None
 CONTROL_MAPPING_FILE = "config/control_mapping.yaml"
 SYSTEM_CONNECTIONS_FILE = "config/system_connections.yaml"
 
@@ -21,6 +21,9 @@ bq_agent = BigQueryAgent(PROJECT_ID)
 
 st.title("🛡️ Data Quality Controls")
 st.markdown("Run data quality controls dynamically using configuration-driven logic.")
+
+if "ai_interpretation" not in st.session_state:
+    st.session_state["ai_interpretation"] = ""
 
 # ---------------- AI REQUIREMENT INTERPRETER ----------------
 st.markdown("---")
@@ -39,8 +42,9 @@ requirement_text = st.text_area(
 if uploaded_file:
     try:
         requirement_text = uploaded_file.read().decode("utf-8")
-    except:
-        requirement_text = str(uploaded_file.read())
+    except Exception:
+        st.error("Unable to read uploaded file. Please upload a UTF-8 text, markdown, or CSV file.")
+        requirement_text = ""
 
 if st.button("🧠 Interpret Requirement with Vertex AI"):
     if not requirement_text.strip():
@@ -51,51 +55,62 @@ if st.button("🧠 Interpret Requirement with Vertex AI"):
                 prompt = f"""
                 You are a telecom data quality expert.
 
-                Read the requirement below and extract:
+                Read the requirement below and extract these fields clearly:
 
-                - control_type
-                - source_systems
-                - target_systems
-                - join_keys
-                - filters
-                - threshold
-                - business_summary
+                Control Type:
+                Source Systems:
+                Target Systems:
+                Join Keys:
+                Filters:
+                Threshold:
+                Business Summary:
 
                 Requirement:
                 {requirement_text}
 
-                Return a clear structured explanation.
+                Return the answer in a neat business-friendly format.
                 """
-
                 response = vertex_agent.model.generate_content(prompt)
-                st.success("AI Interpretation")
-                st.markdown(response.text)
-
+                st.session_state["ai_interpretation"] = response.text
             except Exception as e:
                 st.error(f"Vertex AI failed: {str(e)}")
-                
+
+if st.session_state["ai_interpretation"]:
+    st.success("AI Interpretation")
+    st.markdown(st.session_state["ai_interpretation"])
+
 # ---------------- LOAD CONFIG ----------------
 config_data = load_yaml_config(BUCKET_NAME, CONTROL_MAPPING_FILE)
 
 def reset_session():
-    for key in ["control_type", "selected_product", "confirmed"]:
+    for key in ["control_type", "selected_product", "confirmed", "ai_interpretation"]:
         if key in st.session_state:
             del st.session_state[key]
 
 # ---------------- STEP 1: Select Control Type ----------------
 if "control_type" not in st.session_state:
     st.subheader("🧩 Step 1: Choose Control Type")
-    control_type = st.selectbox("Which data quality control would you like to run?", ["Completeness", "Accuracy"])
+    control_type = st.selectbox(
+        "Which data quality control would you like to run?",
+        ["Completeness", "Accuracy"]
+    )
     if st.button("Next ➡️"):
         st.session_state["control_type"] = control_type
         st.rerun()
     st.stop()
 
-# ---------------- STEP 2: Select Product (Dynamic from BigQuery) ----------------
+# ---------------- STEP 2: Select Product ----------------
 if "selected_product" not in st.session_state:
     st.subheader("🛠️ Step 2: Select Product")
-    product_df = bq_agent.execute("SELECT DISTINCT product_name FROM `telecom-data-lake.gibantillia.billing_products`")
-    product_list = sorted(product_df['product_name'].dropna().tolist())
+
+    try:
+        product_df = bq_agent.execute(
+            f"SELECT DISTINCT product_name FROM `{PROJECT_ID}.gibantillia.billing_products`"
+        )
+        product_list = sorted(product_df["product_name"].dropna().tolist())
+    except Exception as e:
+        st.error(f"Failed to load product list: {str(e)}")
+        st.stop()
 
     selected_product = st.selectbox("Please choose a product:", product_list)
 
@@ -145,15 +160,24 @@ if "confirmed" not in st.session_state:
             st.rerun()
     st.stop()
 
-# ---------------- STEP 6: Fetch Data Dynamically ----------------
+# ---------------- STEP 6: Fetch Data ----------------
 st.success(f"🚀 Running {control_type} for **{selected_product}**...")
-system_dfs = fetch_system_data(PROJECT_ID, systems)
+
+try:
+    system_dfs = fetch_system_data(PROJECT_ID, systems)
+except Exception as e:
+    st.error(f"Failed to fetch source system data: {str(e)}")
+    st.stop()
 
 # ---------------- STEP 7: Execute Control Logic ----------------
-if control_type == "Completeness":
-    merged, result_df = run_completeness(system_dfs, selected_product)
-elif control_type == "Accuracy":
-    merged, result_df = run_accuracy(system_dfs, selected_product)
+try:
+    if control_type == "Completeness":
+        merged, result_df = run_completeness(system_dfs, selected_product)
+    elif control_type == "Accuracy":
+        merged, result_df = run_accuracy(system_dfs, selected_product)
+except Exception as e:
+    st.error(f"Control execution failed: {str(e)}")
+    st.stop()
 
 # ---------------- STEP 8: Display Output ----------------
 st.subheader("📊 Results Summary")
